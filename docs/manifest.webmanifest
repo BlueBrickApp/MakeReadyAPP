@@ -1,0 +1,21 @@
+{
+  "name": "Unit Turnover Tracker",
+  "short_name": "TurnoverTracker",
+  "description": "High-contrast field operations management tool for apartment turnover, trade-specific make-ready workflows, offline sync, and supervisor readiness sign-off.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#080C14",
+  "theme_color": "#080C14",
+  "icons": [
+    {
+      "src": "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=192&auto=format&fit=crop&q=80",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=512&auto=format&fit=crop&q=80",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}

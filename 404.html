@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Unit Turnover Tracker</title>
+    <meta name="description" content="High-contrast field operations management tool for apartment turnover, trade-specific make-ready workflows, offline sync, and supervisor readiness sign-off." />
+    <meta property="og:title" content="Unit Turnover Tracker" />
+    <meta property="og:description" content="High-contrast field operations management tool for apartment turnover, trade-specific make-ready workflows, offline sync, and supervisor readiness sign-off." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <meta name="theme-color" content="#080C14" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Turnover" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Fallback for static hosts (e.g. GitHub Pages serving from repository root without Vite dev server)
+      if (window.location.hostname.endsWith('github.io') && !document.querySelector('script[src*="assets/app.js"]')) {
+        var css = document.createElement('link');
+        css.rel = 'stylesheet';
+        css.href = './assets/index.css';
+        document.head.appendChild(css);
+
+        var script = document.createElement('script');
+        script.type = 'module';
+        script.crossOrigin = 'anonymous';
+        script.src = './assets/app.js';
+        document.head.appendChild(script);
+      }
+    </script>
+    <script type="module" crossorigin src="./assets/app.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index.css">
+  </head>
+  <body class="bg-[#080C14] text-slate-100 antialiased selection:bg-[#00FFB4] selection:text-black">
+    <div id="root"></div>
+  </body>
+</html>
+

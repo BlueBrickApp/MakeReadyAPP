@@ -1,0 +1,6 @@
+{
+  "name": "Unit Turnover Tracker",
+  "description": "High-contrast field operations management tool for apartment turnover, trade-specific make-ready workflows, offline sync, and supervisor readiness sign-off.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

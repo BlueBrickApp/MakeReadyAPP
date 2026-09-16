@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "Unit": {
+      "title": "Unit",
+      "description": "Apartment unit undergoing turnover process",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "unit_number": { "type": "string" },
+        "current_status": { "type": "string", "enum": ["Inspection", "In-Progress", "Ready", "Rent Ready"] },
+        "floor_plan": { "type": "string" },
+        "building": { "type": "string" },
+        "floor": { "type": "number" },
+        "assigned_technician_id": { "type": "string" },
+        "move_out_date": { "type": "string" },
+        "target_ready_date": { "type": "string" },
+        "last_updated": { "type": "number" },
+        "notes": { "type": "string" },
+        "signed_off_by": { "type": "string" },
+        "signed_off_at": { "type": "number" },
+        "signature_image": { "type": "string" }
+      },
+      "required": ["id", "unit_number", "current_status", "floor_plan", "building", "floor", "assigned_technician_id", "last_updated"]
+    },
+    "Checklist": {
+      "title": "Checklist",
+      "description": "Trade specific checklist with sequence of turnover tasks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "unit_id": { "type": "string" },
+        "trade_category": { "type": "string" },
+        "completion_percentage": { "type": "number" },
+        "status": { "type": "string" },
+        "assigned_technician_id": { "type": "string" },
+        "last_updated": { "type": "number" },
+        "last_updated_by": { "type": "string" },
+        "version": { "type": "number" }
+      },
+      "required": ["id", "unit_id", "trade_category", "completion_percentage", "status", "last_updated", "version"]
+    },
+    "WorkOrder": {
+      "title": "WorkOrder",
+      "description": "Field maintenance work orders and punch-out items",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "unit_id": { "type": "string" },
+        "unit_number": { "type": "string" },
+        "trade_category": { "type": "string" },
+        "priority": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "technician_id": { "type": "string" },
+        "created_by": { "type": "string" },
+        "created_at": { "type": "number" }
+      },
+      "required": ["id", "unit_id", "unit_number", "trade_category", "priority", "description", "status", "created_at"]
+    },
+    "FieldLogEntry": {
+      "title": "FieldLogEntry",
+      "description": "Audit trail log of all turnover field events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "unit_id": { "type": "string" },
+        "unit_number": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "author_name": { "type": "string" },
+        "author_role": { "type": "string" },
+        "action_type": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["id", "unit_id", "unit_number", "timestamp", "author_name", "author_role", "action_type", "message"]
+    },
+    "SupervisorNotification": {
+      "title": "SupervisorNotification",
+      "description": "Notification dispatched to maintenance supervisors",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "unit_id": { "type": "string" },
+        "unit_number": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "timestamp", "type", "title", "message", "unit_id", "unit_number", "read"]
+    },
+    "TechnicianUser": {
+      "title": "TechnicianUser",
+      "description": "Maintenance employees, technicians, and supervisors",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["Field Technician", "Maintenance Supervisor"] },
+        "trade_specialty": { "type": "string" },
+        "badge_id": { "type": "string" },
+        "avatar": { "type": "string" },
+        "phone": { "type": "string" }
+      },
+      "required": ["id", "name", "role", "trade_specialty", "badge_id", "phone"]
+    }
+  },
+  "firestore": {
+    "/units/{unitId}": {
+      "schema": "Unit",
+      "description": "Collection of all apartment units in the turnover pipeline"
+    },
+    "/checklists/{checklistId}": {
+      "schema": "Checklist",
+      "description": "Collection of trade checklists with tasks"
+    },
+    "/work_orders/{workOrderId}": {
+      "schema": "WorkOrder",
+      "description": "Collection of work orders"
+    },
+    "/field_logs/{logId}": {
+      "schema": "FieldLogEntry",
+      "description": "Collection of field log entries"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "SupervisorNotification",
+      "description": "Collection of supervisor notifications"
+    },
+    "/technicians/{technicianId}": {
+      "schema": "TechnicianUser",
+      "description": "Collection of maintenance technicians and team members"
+    }
+  }
+}
