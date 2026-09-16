@@ -415,8 +415,22 @@ export default function App() {
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
         notifications={notifications}
-        onMarkRead={offlineDB.markNotificationRead.bind(offlineDB)}
-        onMarkAllRead={offlineDB.markAllNotificationsRead.bind(offlineDB)}
+        onMarkRead={async (id) => {
+          await offlineDB.markNotificationRead(id);
+          await loadData();
+        }}
+        onMarkAllRead={async () => {
+          await offlineDB.markAllNotificationsRead();
+          await loadData();
+        }}
+        onDeleteNotification={async (id) => {
+          await offlineDB.deleteNotification(id);
+          await loadData();
+        }}
+        onDeleteReadNotifications={async () => {
+          await offlineDB.deleteReadNotifications();
+          await loadData();
+        }}
         onNavigateToUnit={(uId) => {
           setSelectedUnitId(uId);
           setCurrentTab('turnover-dashboard');

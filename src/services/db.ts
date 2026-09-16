@@ -487,6 +487,9 @@ class OfflineDB {
           if (change.type === 'added' || change.type === 'modified') {
             await this.putInStore('notifications', notif);
             hasChanges = true;
+          } else if (change.type === 'removed') {
+            await this.deleteFromStore('notifications', change.doc.id);
+            hasChanges = true;
           }
         }
         if (hasChanges) this.notifyListeners();
@@ -1492,6 +1495,24 @@ class OfflineDB {
       n.read = true;
       await this.putInStore('notifications', n);
       this.pushToFirestore('notifications', n.id, n);
+    }
+    this.notifyListeners();
+  }
+
+  // Delete single notification / mail
+  public async deleteNotification(id: string): Promise<void> {
+    await this.deleteFromStore('notifications', id);
+    await this.deleteFromFirestore('notifications', id);
+    this.notifyListeners();
+  }
+
+  // Delete all read notifications / emails (borrar mails leídos)
+  public async deleteReadNotifications(): Promise<void> {
+    const notifs = await this.getNotifications();
+    const readNotifs = notifs.filter(n => n.read);
+    for (const n of readNotifs) {
+      await this.deleteFromStore('notifications', n.id);
+      await this.deleteFromFirestore('notifications', n.id);
     }
     this.notifyListeners();
   }
