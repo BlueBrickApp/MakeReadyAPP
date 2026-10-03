@@ -51,11 +51,45 @@ export interface Checklist {
   version: number;
 }
 
+export const FLOOR_PLAN_GROUPS = [
+  {
+    category: '1 Bedroom',
+    options: [
+      'A1 — 675 SF',
+      'A2 — 675 SF',
+      'A3 — 738 SF',
+      'A4 — 788 SF',
+      'A5 — 850 SF',
+      'A6 — 871 SF',
+    ],
+  },
+  {
+    category: '2 Bedroom',
+    options: [
+      'B1 — 1,075 SF',
+      'B2 — 1,125 SF',
+      'B3 — 1,125 SF',
+      'B4 — 1,175 SF',
+      'B5 — 1,202 SF',
+      'B6 — 1,221 SF',
+      'B7 — 1,250 SF',
+    ],
+  },
+  {
+    category: '3 Bedroom',
+    options: [
+      'C1 — 1,350 SF',
+    ],
+  },
+] as const;
+
+export type FloorPlan = string;
+
 export interface Unit {
   id: string;
   unit_number: string;
   current_status: TurnoverStage;
-  floor_plan: '1B/1B' | '2B/2B' | 'Studio' | '3B/2B' | 'Townhome';
+  floor_plan: FloorPlan;
   building: string;
   floor: number;
   assigned_technician_id: string;

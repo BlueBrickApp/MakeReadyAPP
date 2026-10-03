@@ -16,7 +16,7 @@ import {
   Key,
   Shield
 } from 'lucide-react';
-import { Unit, TechnicianUser } from '../types';
+import { Unit, TechnicianUser, FLOOR_PLAN_GROUPS } from '../types';
 import { ACTIVE_TECHNICIANS } from '../services/db';
 import { soundManager } from '../services/audio';
 
@@ -37,7 +37,7 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
   onCreateUnit
 }) => {
   const [unitNumber, setUnitNumber] = useState('');
-  const [floorPlan, setFloorPlan] = useState<Unit['floor_plan']>('2B/2B');
+  const [floorPlan, setFloorPlan] = useState<Unit['floor_plan']>('A1 — 675 SF');
   const [building, setBuilding] = useState('Cedar Ridge - Bldg B');
   const [floor, setFloor] = useState<number>(2);
   const [assignedTechId, setAssignedTechId] = useState(currentUser.id);
@@ -225,11 +225,15 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
                 onChange={(e) => setFloorPlan(e.target.value as Unit['floor_plan'])}
                 className="w-full p-2.5 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 focus:outline-none focus:border-[#00FFB4] cursor-pointer"
               >
-                <option value="1B/1B">1 Bed / 1 Bath (1B/1B)</option>
-                <option value="2B/2B">2 Bed / 2 Bath (2B/2B)</option>
-                <option value="Studio">Studio</option>
-                <option value="3B/2B">3 Bed / 2 Bath (3B/2B)</option>
-                <option value="Townhome">Townhome</option>
+                {FLOOR_PLAN_GROUPS.map((group) => (
+                  <optgroup key={group.category} label={group.category} className="bg-slate-900 text-[#00FFB4] font-bold">
+                    {group.options.map((option) => (
+                      <option key={option} value={option} className="bg-slate-950 text-slate-200 font-normal">
+                        {option}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
               </select>
             </div>
           </div>

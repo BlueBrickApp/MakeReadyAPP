@@ -28,7 +28,8 @@ import {
   Checklist, 
   WorkOrder, 
   TechnicianUser,
-  TRADE_CATEGORIES
+  TRADE_CATEGORIES,
+  FLOOR_PLAN_GROUPS
 } from '../types';
 import { soundManager } from '../services/audio';
 import { offlineDB } from '../services/db';
@@ -525,10 +526,15 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
               className="bg-transparent text-slate-300 text-xs focus:outline-none cursor-pointer"
             >
               <option value="all" className="bg-slate-900 text-white">All Floor Plans</option>
-              <option value="1B/1B" className="bg-slate-900 text-white">1B / 1B</option>
-              <option value="2B/2B" className="bg-slate-900 text-white">2B / 2B</option>
-              <option value="Studio" className="bg-slate-900 text-white">Studio</option>
-              <option value="3B/2B" className="bg-slate-900 text-white">3B / 2B</option>
+              {FLOOR_PLAN_GROUPS.map((group) => (
+                <optgroup key={group.category} label={group.category} className="bg-slate-900 text-[#00FFB4] font-bold">
+                  {group.options.map((option) => (
+                    <option key={option} value={option} className="bg-slate-950 text-white font-normal">
+                      {option}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
 

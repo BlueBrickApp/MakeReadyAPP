@@ -221,7 +221,7 @@ export const INITIAL_UNITS: Unit[] = [
     unit_number: '1001',
     building: 'Cedar Ridge - Bldg B',
     floor: 1,
-    floor_plan: '1B/1B',
+    floor_plan: 'A1 — 675 SF',
     current_status: 'Inspection',
     assigned_technician_id: 'sup-1',
     assigned_tech: 'Gerry Malovini',
@@ -235,7 +235,7 @@ export const INITIAL_UNITS: Unit[] = [
     unit_number: '1002',
     building: 'Cedar Ridge - Bldg B',
     floor: 1,
-    floor_plan: '2B/2B',
+    floor_plan: 'B1 — 1,075 SF',
     current_status: 'In-Progress',
     assigned_technician_id: 'tech-1',
     assigned_tech: 'Carlos Mendez',
@@ -249,7 +249,7 @@ export const INITIAL_UNITS: Unit[] = [
     unit_number: '1003',
     building: 'Cedar Ridge - Bldg B',
     floor: 2,
-    floor_plan: '2B/2B',
+    floor_plan: 'B2 — 1,125 SF',
     current_status: 'Ready',
     assigned_technician_id: 'tech-3',
     assigned_tech: 'Elena Rostova',
@@ -263,7 +263,7 @@ export const INITIAL_UNITS: Unit[] = [
     unit_number: '1004',
     building: 'Cedar Ridge - Bldg B',
     floor: 2,
-    floor_plan: '3B/2B',
+    floor_plan: 'C1 — 1,350 SF',
     current_status: 'Rent Ready',
     assigned_technician_id: 'sup-1',
     assigned_tech: 'Gerry Malovini',
@@ -1030,7 +1030,22 @@ class OfflineDB {
 
   // Public Query Methods
   public async getUnits(): Promise<Unit[]> {
-    return this.getAllFromStore<Unit>('units');
+    const units = await this.getAllFromStore<Unit>('units');
+    const legacyMap: Record<string, string> = {
+      '1B/1B': 'A1 — 675 SF',
+      'Studio': 'A1 — 675 SF',
+      '2B/2B': 'B1 — 1,075 SF',
+      '3B/2B': 'C1 — 1,350 SF',
+      'Townhome': 'C1 — 1,350 SF'
+    };
+    for (const u of units) {
+      if (u.floor_plan && legacyMap[u.floor_plan]) {
+        u.floor_plan = legacyMap[u.floor_plan];
+        await this.putInStore('units', u);
+        this.pushToFirestore('units', u.id, u);
+      }
+    }
+    return units;
   }
 
   public async getUnitById(id: string): Promise<Unit | undefined> {
