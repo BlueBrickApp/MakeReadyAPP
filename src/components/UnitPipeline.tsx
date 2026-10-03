@@ -39,6 +39,8 @@ interface UnitPipelineProps {
   checklists: Checklist[];
   workOrders: WorkOrder[];
   currentUser: TechnicianUser;
+  technicians?: TechnicianUser[];
+  onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
   onSelectUnit: (unitId: string) => void;
   onOpenChecklist: (unitId: string, tradeCategory?: any) => void;
   onOpenDashboard: (unitId: string) => void;
@@ -79,6 +81,8 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   checklists,
   workOrders,
   currentUser,
+  technicians = [],
+  onReassignTechnician,
   onSelectUnit,
   onOpenChecklist,
   onOpenDashboard,
@@ -214,11 +218,32 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
             <p className="text-[11px] text-slate-400 truncate mt-0.5">
               {unit.building} • Fl {unit.floor}
             </p>
-            {unit.assigned_tech && (
-              <p className="text-[10px] text-cyan-400 font-mono mt-0.5 truncate">
-                Tech: <span className="text-slate-200 font-semibold">{unit.assigned_tech}</span>
-              </p>
-            )}
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className="text-[10px] text-cyan-400 font-mono shrink-0">Tech:</span>
+              {technicians.length > 0 && onReassignTechnician ? (
+                <select
+                  id={`select-unit-tech-${unit.unit_number}`}
+                  value={unit.assigned_technician_id || ''}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    onReassignTechnician(unit.id, e.target.value);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  title="Change assigned Maintenance Technician"
+                  className="bg-slate-950 border border-slate-700/80 hover:border-[#00FFB4] text-slate-200 text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded focus:outline-none focus:border-[#00FFB4] cursor-pointer max-w-[165px] truncate transition-colors"
+                >
+                  {technicians.map((t) => (
+                    <option key={t.id} value={t.id} className="bg-slate-900 text-white">
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-[10px] text-slate-200 font-mono font-semibold truncate">
+                  {unit.assigned_tech || 'Unassigned'}
+                </span>
+              )}
+            </div>
             {unit.notes && (
               <p className="text-[10px] text-slate-400 italic line-clamp-1 mt-1 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800/80">
                 "{unit.notes}"

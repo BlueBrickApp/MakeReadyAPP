@@ -38,6 +38,8 @@ interface InspectionChecklistProps {
   onSelectTrade: (trade: TradeCategory) => void;
   checklists: Checklist[];
   currentUser: TechnicianUser;
+  technicians?: TechnicianUser[];
+  onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
   onUpdateTask: (checklistId: string, taskId: string, updates: Partial<Task>) => Promise<void>;
   onCreateWorkOrderFromTask: (unitId: string, unitNumber: string, trade: TradeCategory, taskName: string) => void;
   onSimulateConflict: (checklistId: string, taskId: string) => void;
@@ -61,6 +63,8 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
   onSelectTrade,
   checklists,
   currentUser,
+  technicians = [],
+  onReassignTechnician,
   onUpdateTask,
   onCreateWorkOrderFromTask,
   onSimulateConflict
@@ -197,9 +201,26 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
               <span className="flex items-center gap-1">
                 <span className="text-slate-400">Layout:</span> <strong className="text-white">{currentUnit.floor_plan}</strong>
               </span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-cyan-400" />
-                <span className="text-slate-400">Assigned Tech:</span> <strong className="text-white">{currentUnit.assigned_tech || 'Unassigned'}</strong>
+                <span className="text-slate-400">Assigned Tech:</span>
+                {technicians.length > 0 && onReassignTechnician ? (
+                  <select
+                    id="checklist-reassign-tech-select"
+                    value={currentUnit.assigned_technician_id || ''}
+                    onChange={(e) => onReassignTechnician(currentUnit.id, e.target.value)}
+                    className="bg-slate-950 border border-slate-700 hover:border-[#00FFB4] text-white font-semibold text-[11px] px-2 py-0.5 rounded focus:outline-none focus:border-[#00FFB4] cursor-pointer transition-colors"
+                    title="Change Assigned Maintenance Technician"
+                  >
+                    {technicians.map((t) => (
+                      <option key={t.id} value={t.id} className="bg-slate-900 text-white">
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <strong className="text-white">{currentUnit.assigned_tech || 'Unassigned'}</strong>
+                )}
               </span>
               {currentUnit.target_ready_date && (
                 <span className="flex items-center gap-1">

@@ -167,6 +167,13 @@ export default function App() {
     await loadData();
   };
 
+  // Handler: Reassign Maintenance Tech on an existing Unit
+  const handleUpdateUnitTechnician = async (unitId: string, technicianId: string) => {
+    soundManager.playClick();
+    await offlineDB.updateUnitTechnician(unitId, technicianId, currentUser);
+    await loadData();
+  };
+
   // Handler: Update Task Punch-List
   const handleUpdateTask = async (checklistId: string, taskId: string, updates: Partial<Task>) => {
     const currentUnit = units.find(u => u.id === selectedUnitId);
@@ -346,6 +353,8 @@ export default function App() {
                 checklists={checklists}
                 workOrders={workOrders}
                 currentUser={currentUser}
+                technicians={technicians}
+                onReassignTechnician={handleUpdateUnitTechnician}
                 onSelectUnit={(id) => {
                   setSelectedUnitId(id);
                   setCurrentTab('turnover-dashboard');
@@ -366,6 +375,8 @@ export default function App() {
                 checklists={checklists}
                 workOrders={workOrders}
                 currentUser={currentUser}
+                technicians={technicians}
+                onReassignTechnician={handleUpdateUnitTechnician}
                 onOpenChecklistForTrade={handleOpenChecklist}
                 onOpenDispatcherForUnit={(uId, trade) => handleOpenDispatcherForUnit(uId, trade)}
                 onOpenSignOff={handleOpenSignOff}
@@ -381,6 +392,8 @@ export default function App() {
                 onSelectTrade={setSelectedTrade}
                 checklists={checklists}
                 currentUser={currentUser}
+                technicians={technicians}
+                onReassignTechnician={handleUpdateUnitTechnician}
                 onUpdateTask={handleUpdateTask}
                 onCreateWorkOrderFromTask={(uId, uNum, trade, taskName) => {
                   handleOpenDispatcherForUnit(uId, trade, taskName);

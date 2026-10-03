@@ -32,6 +32,8 @@ interface TurnoverDashboardProps {
   checklists: Checklist[];
   workOrders: WorkOrder[];
   currentUser: TechnicianUser;
+  technicians?: TechnicianUser[];
+  onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
   onOpenChecklistForTrade: (unitId: string, trade: TradeCategory) => void;
   onOpenDispatcherForUnit: (unitId: string, trade: TradeCategory) => void;
   onOpenSignOff: (unitId: string) => void;
@@ -53,6 +55,8 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
   checklists,
   workOrders,
   currentUser,
+  technicians = [],
+  onReassignTechnician,
   onOpenChecklistForTrade,
   onOpenDispatcherForUnit,
   onOpenSignOff
@@ -137,14 +141,33 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
             </div>
             
             <div className="space-y-1 text-xs text-slate-400 font-mono">
-              <p>
-                {currentUnit?.building} {currentUnit?.floor ? `• Floor ${currentUnit.floor}` : ''} • Target Ready: <strong className="text-slate-200">{currentUnit?.target_ready_date}</strong>
-                {currentUnit?.assigned_tech && (
-                  <span className="ml-2 text-cyan-400">
-                    • Lead Tech: <strong className="text-white">{currentUnit.assigned_tech}</strong>
-                  </span>
-                )}
-              </p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                <span>
+                  {currentUnit?.building} {currentUnit?.floor ? `• Floor ${currentUnit.floor}` : ''} • Target Ready: <strong className="text-slate-200">{currentUnit?.target_ready_date}</strong>
+                </span>
+                <span className="text-slate-600">•</span>
+                <div className="inline-flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-cyan-400">Lead Tech:</span>
+                  {technicians.length > 0 && onReassignTechnician ? (
+                    <select
+                      id="dashboard-reassign-tech-select"
+                      value={currentUnit.assigned_technician_id || ''}
+                      onChange={(e) => onReassignTechnician(currentUnit.id, e.target.value)}
+                      className="bg-slate-900 border border-slate-700 hover:border-[#00FFB4] text-white font-semibold text-xs px-2 py-0.5 rounded focus:outline-none focus:border-[#00FFB4] cursor-pointer transition-colors"
+                      title="Change Assigned Maintenance Technician"
+                    >
+                      {technicians.map((t) => (
+                        <option key={t.id} value={t.id} className="bg-slate-900 text-white">
+                          {t.name} ({t.trade_specialty})
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <strong className="text-white">{currentUnit?.assigned_tech || 'Unassigned'}</strong>
+                  )}
+                </div>
+              </div>
               {currentUnit?.notes && (
                 <p className="text-[11px] text-slate-300 italic bg-slate-900 px-2 py-1 rounded border border-slate-800">
                   <span className="font-semibold text-slate-400 not-italic mr-1">Notes:</span>

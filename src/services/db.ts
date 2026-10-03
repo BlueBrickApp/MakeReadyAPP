@@ -1284,6 +1284,60 @@ class OfflineDB {
     return unit.current_status;
   }
 
+  // Reassign Maintenance Technician on an existing Unit
+  public async updateUnitTechnician(unitId: string, technicianId: string, author: TechnicianUser): Promise<Unit> {
+    const unit = await this.getUnitById(unitId);
+    if (!unit) throw new Error('Unit not found');
+
+    const allTechs = await this.getTechnicians();
+    const techObj = allTechs.find(t => t.id === technicianId);
+    const techName = techObj ? techObj.name : unit.assigned_tech || 'Unassigned';
+
+    const updatedUnit: Unit = {
+      ...unit,
+      assigned_technician_id: technicianId,
+      assigned_tech: techName,
+      last_updated: Date.now()
+    };
+    await this.putInStore('units', updatedUnit);
+    await this.pushToFirestore('units', updatedUnit.id, updatedUnit);
+
+    // Also update checklists for this unit
+    const checklists = await this.getChecklistsForUnit(unitId);
+    for (const c of checklists) {
+      const updatedChk: Checklist = {
+        ...c,
+        assigned_technician_id: technicianId,
+        last_updated: Date.now(),
+        last_updated_by: author.name
+      };
+      await this.putInStore('checklists', updatedChk);
+      this.pushToFirestore('checklists', updatedChk.id, updatedChk);
+    }
+
+    const logEntry: FieldLogEntry = {
+      id: `log-${Date.now()}`,
+      unit_id: unit.id,
+      unit_number: unit.unit_number,
+      timestamp: Date.now(),
+      author_name: author.name,
+      author_role: author.role,
+      action_type: 'note_added',
+      message: `Reassigned Lead Maintenance Technician for Unit #${unit.unit_number} to ${techName}.`,
+      synced: this.isConnected
+    };
+    await this.putInStore('field_logs', logEntry);
+    this.pushToFirestore('field_logs', logEntry.id, logEntry);
+
+    if (!this.isConnected) {
+      await this.enqueueSync('unit', unit.id, 'update', updatedUnit);
+      await this.enqueueSync('field_log', logEntry.id, 'create', logEntry);
+    }
+
+    this.notifyListeners();
+    return updatedUnit;
+  }
+
   // Move Unit stage (e.g. from Kanban drag or supervisor action)
   public async updateUnitStage(unitId: string, newStage: TurnoverStage, author: TechnicianUser): Promise<Unit> {
     const unit = await this.getUnitById(unitId);
