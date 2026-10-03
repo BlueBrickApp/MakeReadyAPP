@@ -307,7 +307,7 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
                 TRADE 100% COMPLETE - SUPERVISOR ALERT DISPATCHED
               </h4>
               <p className="text-xs text-slate-300">
-                Automated notification sent to Supervisor Sarah Vance for review.
+                Automated notification sent to Maintenance Supervisor Gerry Malovini for review.
               </p>
             </div>
           </div>

@@ -50,6 +50,15 @@ const DB_VERSION = 4;
 
 export const DEFAULT_TECHNICIANS: TechnicianUser[] = [
   {
+    id: 'sup-1',
+    name: 'Gerry Malovini',
+    role: 'Maintenance Supervisor',
+    trade_specialty: 'Operations & Quality Sign-Off',
+    badge_id: 'SUP-101',
+    avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
+    phone: '(555) 890-1234'
+  },
+  {
     id: 'tech-1',
     name: 'Carlos Mendez',
     role: 'Field Technician',
@@ -75,15 +84,6 @@ export const DEFAULT_TECHNICIANS: TechnicianUser[] = [
     badge_id: 'TECH-518',
     avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
     phone: '(555) 456-7890'
-  },
-  {
-    id: 'sup-1',
-    name: 'Sarah Vance',
-    role: 'Maintenance Supervisor',
-    trade_specialty: 'Operations & Quality Sign-Off',
-    badge_id: 'SUP-101',
-    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
-    phone: '(555) 890-1234'
   }
 ];
 
@@ -222,7 +222,7 @@ export const INITIAL_UNITS: Unit[] = [
     floor_plan: '1B/1B',
     current_status: 'Inspection',
     assigned_technician_id: 'sup-1',
-    assigned_tech: 'Dave Jenkins',
+    assigned_tech: 'Gerry Malovini',
     move_out_date: '2026-09-12',
     target_ready_date: '2026-09-19',
     notes: 'Keys are on the counter. Intake inspection in progress.',
@@ -264,11 +264,11 @@ export const INITIAL_UNITS: Unit[] = [
     floor_plan: '3B/2B',
     current_status: 'Rent Ready',
     assigned_technician_id: 'sup-1',
-    assigned_tech: 'Dave Jenkins',
+    assigned_tech: 'Gerry Malovini',
     move_out_date: '2026-08-28',
     target_ready_date: '2026-09-14',
     notes: 'Turnover 100% complete. Lockbox installed with ready keys.',
-    signed_off_by: 'Dave Jenkins',
+    signed_off_by: 'Gerry Malovini',
     signed_off_at: Date.now() - 1000 * 60 * 60 * 12,
     last_updated: Date.now() - 1000 * 60 * 60 * 24
   }
@@ -501,6 +501,13 @@ class OfflineDB {
       // 6. Real-time Technicians / Maintenance Employees listener
       const unsubTechs = onSnapshot(collection(firestoreDb, 'technicians'), async (snapshot) => {
         if (snapshot.empty && !this.simulateOffline) {
+          for (const t of DEFAULT_TECHNICIANS) {
+            await this.putInStore('technicians', t);
+            await this.pushToFirestore('technicians', t.id, t);
+          }
+          ACTIVE_TECHNICIANS = [...DEFAULT_TECHNICIANS];
+          localStorage.setItem('utt_technicians', JSON.stringify(DEFAULT_TECHNICIANS));
+          this.notifyListeners();
           return;
         }
 
@@ -511,10 +518,34 @@ class OfflineDB {
           }
         }
 
-        const list: TechnicianUser[] = [];
+        let list: TechnicianUser[] = [];
         for (const docSnap of snapshot.docs) {
           list.push(docSnap.data() as TechnicianUser);
         }
+
+        // Ensure Gerry Malovini is configured as Maintenance Supervisor
+        const gerrySupervisor: TechnicianUser = {
+          id: 'sup-1',
+          name: 'Gerry Malovini',
+          role: 'Maintenance Supervisor',
+          trade_specialty: 'Operations & Quality Sign-Off',
+          badge_id: 'SUP-101',
+          avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
+          phone: '(555) 890-1234'
+        };
+
+        const existingSupIndex = list.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase() === 'gerry malovini');
+        if (existingSupIndex >= 0) {
+          if (list[existingSupIndex].name !== 'Gerry Malovini' || list[existingSupIndex].role !== 'Maintenance Supervisor') {
+            const updatedSup = { ...list[existingSupIndex], name: 'Gerry Malovini', role: 'Maintenance Supervisor' as const };
+            list[existingSupIndex] = updatedSup;
+            await this.pushToFirestore('technicians', updatedSup.id, updatedSup);
+          }
+        } else {
+          list.unshift(gerrySupervisor);
+          await this.pushToFirestore('technicians', gerrySupervisor.id, gerrySupervisor);
+        }
+
         if (list.length > 0) {
           ACTIVE_TECHNICIANS = list;
           localStorage.setItem('utt_technicians', JSON.stringify(list));
@@ -1721,14 +1752,41 @@ class OfflineDB {
   public async getTechnicians(): Promise<TechnicianUser[]> {
     const stored = await this.getAllFromStore<TechnicianUser>('technicians');
     if (stored && stored.length > 0) {
+      let updated = false;
+      const gerrySupervisor = DEFAULT_TECHNICIANS[0];
+      const supIdx = stored.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase() === 'gerry malovini');
+      if (supIdx >= 0) {
+        if (stored[supIdx].name !== 'Gerry Malovini' || stored[supIdx].role !== 'Maintenance Supervisor') {
+          stored[supIdx] = { ...stored[supIdx], name: 'Gerry Malovini', role: 'Maintenance Supervisor' };
+          await this.putInStore('technicians', stored[supIdx]);
+          this.pushToFirestore('technicians', stored[supIdx].id, stored[supIdx]);
+          updated = true;
+        }
+      } else {
+        stored.unshift(gerrySupervisor);
+        await this.putInStore('technicians', gerrySupervisor);
+        this.pushToFirestore('technicians', gerrySupervisor.id, gerrySupervisor);
+        updated = true;
+      }
+      if (updated) {
+        localStorage.setItem('utt_technicians', JSON.stringify(stored));
+      }
       ACTIVE_TECHNICIANS = stored;
       return stored;
     }
     const local = localStorage.getItem('utt_technicians');
     if (local) {
       try {
-        const parsed = JSON.parse(local);
+        const parsed: TechnicianUser[] = JSON.parse(local);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          const gerrySupervisor = DEFAULT_TECHNICIANS[0];
+          const supIdx = parsed.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase() === 'gerry malovini');
+          if (supIdx >= 0) {
+            parsed[supIdx] = { ...parsed[supIdx], name: 'Gerry Malovini', role: 'Maintenance Supervisor' };
+          } else {
+            parsed.unshift(gerrySupervisor);
+          }
+          localStorage.setItem('utt_technicians', JSON.stringify(parsed));
           ACTIVE_TECHNICIANS = parsed;
           return parsed;
         }

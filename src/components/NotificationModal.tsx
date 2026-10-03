@@ -274,7 +274,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
             <div className="space-y-4">
               <div className="p-3 bg-slate-950 rounded-lg border border-slate-800 text-xs font-mono space-y-1">
                 <div className="text-slate-400">
-                  Select alert to preview automated dispatch email sent to <strong>Sarah Vance &lt;svance@cedarridgeops.com&gt;</strong>:
+                  Select alert to preview automated dispatch email sent to <strong>Gerry Malovini &lt;GerardoMalovini@gmail.com&gt;</strong>:
                 </div>
                 <div className="flex gap-2 overflow-x-auto py-1">
                   {notifications.map(n => (
@@ -328,7 +328,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">To:</span>
-                      <span className="text-slate-200">Sarah Vance (Lead Maintenance Supervisor)</span>
+                      <span className="text-slate-200">Gerry Malovini (Maintenance Supervisor) &lt;GerardoMalovini@gmail.com&gt;</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-400">Subject:</span>
@@ -338,7 +338,7 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
 
                   {/* Email Body */}
                   <div className="p-4 space-y-3 text-xs text-slate-200 leading-relaxed">
-                    <p>Supervisor Sarah Vance,</p>
+                    <p>Maintenance Supervisor Gerry Malovini,</p>
                     <p>
                       This automated notification confirms an operational turnover event has been logged for 
                       <strong> Unit #{selectedNotifForEmail.unit_number}</strong>:

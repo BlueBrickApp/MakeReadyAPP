@@ -116,8 +116,13 @@ export const Header: React.FC<HeaderProps> = ({
                   v2.4 OPS
                 </span>
               </div>
-              <p className="text-xs text-slate-400 font-mono">
-                Field Maintenance & Make-Ready Ops
+              <p className="text-xs text-slate-400 font-mono flex items-center gap-2 flex-wrap">
+                <span>Field Maintenance & Make-Ready Ops</span>
+                <span className="hidden sm:inline text-slate-600">•</span>
+                <span className="text-[#00FFB4] font-semibold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-[#00FFB4]" />
+                  <span>Maintenance Supervisor: Gerry Malovini</span>
+                </span>
               </p>
             </div>
           </div>

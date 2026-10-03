@@ -236,7 +236,7 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
               className="px-6 py-3 rounded-xl bg-[#00FFB4] text-black font-bold text-sm tracking-wider uppercase flex items-center gap-2 hover:brightness-110 shadow-[0_0_20px_rgba(0,255,180,0.35)] transition-all cursor-pointer"
             >
               <Unlock className="w-4 h-4" />
-              <span>Switch to Sarah Vance (Supervisor)</span>
+              <span>Switch to Gerry Malovini (Supervisor)</span>
             </button>
           </div>
         </div>
@@ -295,7 +295,7 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
                 OFFICIALLY CERTIFIED RENT READY
               </h3>
               <p className="text-xs text-purple-200">
-                Signed off by <strong>{currentUnit.signed_off_by || 'Sarah Vance'}</strong>. Unit is keyed and released for property leasing.
+                Signed off by <strong>{currentUnit.signed_off_by || 'Gerry Malovini'}</strong>. Unit is keyed and released for property leasing.
               </p>
             </div>
           </div>
@@ -596,7 +596,7 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
             </div>
             <div>
               <span className="text-slate-500">Certified By:</span>
-              <p className="text-base font-bold text-white">{currentUnit.signed_off_by || 'Sarah Vance'}</p>
+              <p className="text-base font-bold text-white">{currentUnit.signed_off_by || 'Gerry Malovini'}</p>
             </div>
             <div>
               <span className="text-slate-500">Date Certified:</span>

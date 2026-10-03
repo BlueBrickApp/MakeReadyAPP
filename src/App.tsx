@@ -104,6 +104,10 @@ export default function App() {
       setSyncQueue(q);
       if (techs && techs.length > 0) {
         setTechnicians(techs);
+        setCurrentUser(prev => {
+          const matched = techs.find(t => t.id === prev.id);
+          return matched || techs[0];
+        });
       }
       if (vends && vends.length > 0) {
         setVendors(vends);
@@ -482,12 +486,14 @@ export default function App() {
             <span className="w-2 h-2 rounded-full bg-[#00FFB4] shadow-[0_0_6px_#00FFB4]" />
             <span>UNIT TURNOVER TRACKER • LOCAL DB ENCRYPTION READY</span>
           </div>
-          <div className="flex items-center gap-4 text-slate-400">
+          <div className="flex items-center gap-4 text-slate-400 flex-wrap justify-center">
+            <span className="text-[#00FFB4] font-semibold">Maintenance Supervisor: Gerry Malovini</span>
+            <span>•</span>
             <span>IndexedDB Store: Active</span>
             <span>•</span>
             <span>Trades: 6 Categories</span>
             <span>•</span>
-            <span>Session: {currentUser.role} ({currentUser.badge_id})</span>
+            <span>Session: {currentUser.name} ({currentUser.role} • {currentUser.badge_id})</span>
           </div>
         </div>
       </footer>
