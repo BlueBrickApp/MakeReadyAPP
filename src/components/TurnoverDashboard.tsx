@@ -88,10 +88,10 @@ function deterministicHash(str: string): number {
 }
 
 /**
- * Generates a 30-day Turnover Velocity time series for a given unit
+ * Generates a 7-day Turnover Velocity time series for a given unit
  * combining real checklist completion timestamps, field logs, move-out date, and current progress.
  */
-function computeUnitVelocity30Days(
+function computeUnitVelocity7Days(
   unit: Unit,
   unitChecklists: Checklist[],
   unitWorkOrders: WorkOrder[],
@@ -100,6 +100,7 @@ function computeUnitVelocity30Days(
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const WINDOW_DAYS = 7;
 
   const totalTasks = unitChecklists.reduce((sum, c) => sum + (c.task_list?.length || 0), 0) || 32;
   const completedTasksList = unitChecklists.flatMap(c => (c.task_list || []).filter(t => t.is_completed));
@@ -111,38 +112,37 @@ function computeUnitVelocity30Days(
     ? 100
     : 0;
 
-  // Determine how many days ago the unit entered turnover (bounded within 3..28 days for 30-day window)
+  // Determine how many days ago the unit entered turnover (bounded within 1..7 days for 7-day window)
   const parsedMoveOut = unit.move_out_date ? Date.parse(unit.move_out_date) : NaN;
   const rawDaysSinceMoveOut = !isNaN(parsedMoveOut)
     ? Math.max(1, Math.round((todayStart - parsedMoveOut) / DAY_MS))
-    : 10;
-  const activeWindowDays = Math.min(28, Math.max(5, rawDaysSinceMoveOut));
-  const startDayIdx = 29 - activeWindowDays;
+    : 5;
+  const activeWindowDays = Math.min(WINDOW_DAYS, Math.max(1, rawDaysSinceMoveOut));
+  const startDayIdx = (WINDOW_DAYS - 1) - (activeWindowDays - 1);
 
   const seed = deterministicHash(unit.id + unit.unit_number);
 
-  // Collect real timestamps if tasks/logs have timestamps within the last 30 days
+  // Collect real timestamps if tasks/logs have timestamps within the last 7 days
   const taskTimestamps = completedTasksList
     .map(t => t.completed_at)
-    .filter((ts): ts is number => typeof ts === 'number' && ts > todayStart - 30 * DAY_MS);
+    .filter((ts): ts is number => typeof ts === 'number' && ts > todayStart - WINDOW_DAYS * DAY_MS);
 
   const logTimestamps = unitLogs
     .map(l => l.timestamp)
-    .filter(ts => typeof ts === 'number' && ts > todayStart - 30 * DAY_MS);
+    .filter(ts => typeof ts === 'number' && ts > todayStart - WINDOW_DAYS * DAY_MS);
 
   const woTimestamps = unitWorkOrders
     .map(w => w.resolved_at || w.created_at)
-    .filter((ts): ts is number => typeof ts === 'number' && ts > todayStart - 30 * DAY_MS);
+    .filter((ts): ts is number => typeof ts === 'number' && ts > todayStart - WINDOW_DAYS * DAY_MS);
 
   const allEvents = [...taskTimestamps, ...logTimestamps, ...woTimestamps];
 
-  // Build 30-day cumulative progression curve that accurately lands on currentPct on Day 29 (Today)
-  // and reflects both real activity timestamps and realistic turnover velocity
+  // Build 7-day cumulative progression curve that accurately lands on currentPct on Day 7 (Today)
   const effectiveTargetPct = Math.max(currentPct, unit.current_status === 'In-Progress' && currentPct === 0 ? 18 : currentPct);
-  const rawCumulative: number[] = new Array(30).fill(0);
+  const rawCumulative: number[] = new Array(WINDOW_DAYS).fill(0);
 
-  for (let i = 0; i < 30; i++) {
-    const dayStart = todayStart - (29 - i) * DAY_MS;
+  for (let i = 0; i < WINDOW_DAYS; i++) {
+    const dayStart = todayStart - (WINDOW_DAYS - 1 - i) * DAY_MS;
     const dayEnd = dayStart + DAY_MS - 1;
 
     if (i < startDayIdx) {
@@ -150,12 +150,11 @@ function computeUnitVelocity30Days(
       continue;
     }
 
-    const progressFraction = (i - startDayIdx + 1) / (30 - startDayIdx);
-    // S-curve + deterministic daily cadence + real event boost
+    const progressFraction = (i - startDayIdx + 1) / (WINDOW_DAYS - startDayIdx);
     const sCurve = Math.pow(progressFraction, 1.15);
-    const wave = Math.sin((i + (seed % 7)) * 0.65) * 0.04;
+    const wave = Math.sin((i + (seed % 5)) * 0.9) * 0.04;
     const eventsOnDay = allEvents.filter(ts => ts >= dayStart && ts <= dayEnd).length;
-    const eventBoost = eventsOnDay * 0.035;
+    const eventBoost = eventsOnDay * 0.05;
 
     const prevVal = i > 0 ? rawCumulative[i - 1] : 0;
     const projected = Math.min(
@@ -166,19 +165,17 @@ function computeUnitVelocity30Days(
   }
 
   // Ensure the final point matches the exact current unit completion percentage
-  rawCumulative[29] = currentPct;
-  for (let i = 28; i >= 0; i--) {
+  rawCumulative[WINDOW_DAYS - 1] = currentPct;
+  for (let i = WINDOW_DAYS - 2; i >= 0; i--) {
     if (rawCumulative[i] > rawCumulative[i + 1]) {
       rawCumulative[i] = rawCumulative[i + 1];
     }
   }
 
-  // If a unit was just created today (0% completion), show a subtle intake baseline pulse on the last 3 days
-  // so the sparkline chart still renders a visible baseline velocity curve
   const points: VelocityPoint[] = [];
-  for (let i = 0; i < 30; i++) {
-    const dayDate = new Date(todayStart - (29 - i) * DAY_MS);
-    const shortDate = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  for (let i = 0; i < WINDOW_DAYS; i++) {
+    const dayDate = new Date(todayStart - (WINDOW_DAYS - 1 - i) * DAY_MS);
+    const shortDate = dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const prevPct = i > 0 ? rawCumulative[i - 1] : 0;
     const completionVal = rawCumulative[i];
     const dailyDelta = Math.max(0, completionVal - prevPct);
@@ -186,7 +183,7 @@ function computeUnitVelocity30Days(
 
     points.push({
       dayIndex: i + 1,
-      dateLabel: i === 29 ? `Today (${shortDate})` : shortDate,
+      dateLabel: i === WINDOW_DAYS - 1 ? `Today (${shortDate})` : shortDate,
       shortDate,
       completionPct: completionVal,
       dailyDeltaPct: dailyDelta,
@@ -203,10 +200,10 @@ function computeUnitVelocity30Days(
   if (currentPct === 100 || unit.current_status === 'Rent Ready' || unit.current_status === 'Ready') {
     paceStatus = 'Completed';
     accentColor = '#00FFB4';
-  } else if (velocityPerDay >= 4.0) {
+  } else if (velocityPerDay >= 14.0) {
     paceStatus = 'Accelerated';
     accentColor = '#00FFB4';
-  } else if (velocityPerDay < 1.5 && activeWindowDays > 10) {
+  } else if (velocityPerDay < 8.0 && activeWindowDays >= 4) {
     paceStatus = 'Needs Push';
     accentColor = '#FFB800';
   } else {
@@ -227,20 +224,20 @@ function computeUnitVelocity30Days(
 }
 
 /**
- * Generates a 30-day mini velocity series for a single Trade Checklist on the selected unit
+ * Generates a 7-day mini velocity series for a single Trade Checklist on the selected unit
  */
-function computeTradeVelocity30Days(checklist: Checklist | undefined, unitId: string, trade: TradeCategory) {
+function computeTradeVelocity7Days(checklist: Checklist | undefined, unitId: string, trade: TradeCategory) {
   const pct = checklist ? checklist.completion_percentage : 0;
   const seed = deterministicHash(`${unitId}-${trade}`);
-  const startDay = 12 + (seed % 10);
+  const startDay = 1 + (seed % 3);
   const pts: { day: number; pct: number }[] = [];
 
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < 7; i++) {
     if (i < startDay) {
       pts.push({ day: i + 1, pct: 0 });
     } else {
-      const ratio = (i - startDay + 1) / (30 - startDay);
-      const val = i === 29 ? pct : Math.min(pct, Math.round(Math.pow(ratio, 1.1) * pct));
+      const ratio = (i - startDay + 1) / (7 - startDay);
+      const val = i === 6 ? pct : Math.min(pct, Math.round(Math.pow(ratio, 1.1) * pct));
       pts.push({ day: i + 1, pct: val });
     }
   }
@@ -263,14 +260,14 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
 }) => {
   const currentUnit = units.find(u => u.id === selectedUnitId) || units[0];
 
-  // Precompute 30-day turnover velocity analytics for all units
+  // Precompute 7-day turnover velocity analytics for all units
   const allUnitsVelocity = useMemo(() => {
     const map = new Map<string, UnitVelocityAnalytics>();
     for (const u of units) {
       const uChecklists = checklists.filter(c => c.unit_id === u.id);
       const uWorkOrders = workOrders.filter(w => w.unit_id === u.id);
       const uLogs = fieldLogs.filter(l => l.unit_id === u.id);
-      map.set(u.id, computeUnitVelocity30Days(u, uChecklists, uWorkOrders, uLogs));
+      map.set(u.id, computeUnitVelocity7Days(u, uChecklists, uWorkOrders, uLogs));
     }
     return map;
   }, [units, checklists, workOrders, fieldLogs]);
@@ -463,10 +460,10 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
             </div>
           </div>
 
-          {/* Selected Unit 30-Day Turnover Velocity KPI Sparkline */}
+          {/* Selected Unit 7-Day Turnover Velocity KPI Sparkline */}
           <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-800 flex flex-col justify-between">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-mono text-slate-400">30d Turnover Velocity</span>
+              <span className="text-[11px] font-mono text-slate-400">7d Turnover Velocity</span>
               <span className="text-[11px] font-mono font-semibold text-[#00FFB4] tabular-nums">
                 +{currentUnitVelocity.velocityPerDay}%/d
               </span>
@@ -517,22 +514,22 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
 
       </div>
 
-      {/* 30-Day Unit Turnover Velocity Sparklines (All Tracked Units) */}
+      {/* 7-Day Unit Turnover Velocity Sparklines (All Tracked Units) */}
       <div className="bg-[#0D131F] border border-slate-800 rounded-xl p-4 sm:p-6 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-[#00FFB4]" />
               <h3 className="font-['Chakra_Petch'] font-bold text-base text-white tracking-wide">
-                30-Day Unit Turnover Velocity
+                7-Day Unit Turnover Velocity
               </h3>
             </div>
             <p className="text-xs font-mono text-slate-400 mt-0.5">
-              Daily make-ready completion velocity over the past 30 days across each unit ({units.length} {units.length === 1 ? 'unit' : 'units'})
+              Daily make-ready completion velocity over the past 7 days across each unit ({units.length} {units.length === 1 ? 'unit' : 'units'})
             </p>
           </div>
           <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
-            <span>Window: Past 30 Days</span>
+            <span>Window: Past 7 Days</span>
             <span aria-hidden="true">·</span>
             <span>Metric: Cumulative % & Daily Pace</span>
           </div>
@@ -579,7 +576,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                       </span>
                     </div>
                     <div className="text-[10px] font-mono text-slate-400 truncate mt-0.5">
-                      {unit.current_status} · {vel.daysActive}d active
+                      {unit.current_status} · {vel.daysActive}d of 7d window
                     </div>
                   </div>
 
@@ -593,7 +590,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* 30-Day Recharts Sparkline */}
+                {/* 7-Day Recharts Sparkline */}
                 <div className="h-14 w-full pt-1">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={vel.points} margin={{ top: 4, right: 2, left: 2, bottom: 2 }}>
@@ -639,7 +636,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
 
                 {/* Footer telemetry line (unboxed metadata with middle dots) */}
                 <div className="flex items-center justify-between pt-1.5 border-t border-slate-800/80 text-[10px] font-mono text-slate-400 tabular-nums">
-                  <span>30d ago → Today</span>
+                  <span>7d ago → Today</span>
                   <span>·</span>
                   <span>{vel.tasksPerDay} tasks/d</span>
                   <span>·</span>
@@ -680,7 +677,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
             const doneCount = taskList.filter(t => t.is_completed).length;
             const totalTradeTasks = taskList.length;
             const tradeWorkOrders = unitWorkOrders.filter(w => w.trade_category === trade && w.status !== 'Resolved');
-            const tradeVelocityPts = computeTradeVelocity30Days(checklist, currentUnit.id, trade);
+            const tradeVelocityPts = computeTradeVelocity7Days(checklist, currentUnit.id, trade);
             const tradeGradId = `trade-spark-${currentUnit.id.replace(/[^a-zA-Z0-9_-]/g, '')}-${trade.toLowerCase()}`;
             const strokeColor = is100 ? '#00FFB4' : pct > 0 ? '#00E5FF' : '#475569';
 
@@ -727,7 +724,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                     </span>
                   </div>
 
-                  {/* Progress Bar + 30d Trade Mini-Sparkline */}
+                  {/* Progress Bar + 7d Trade Mini-Sparkline */}
                   <div className="mt-4 space-y-2">
                     <div className="flex justify-between text-xs font-mono">
                       <span className="text-slate-400">Execution Progress</span>
@@ -744,11 +741,11 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                       />
                     </div>
 
-                    {/* Mini 30-day trade velocity sparkline */}
+                    {/* Mini 7-day trade velocity sparkline */}
                     <div className="pt-1 flex items-center justify-between gap-3">
                       <span className="text-[10px] font-mono text-slate-400 flex items-center gap-1 shrink-0">
                         <Activity className="w-3 h-3 text-slate-500" />
-                        <span>30d Velocity</span>
+                        <span>7d Velocity</span>
                       </span>
                       <div className="h-7 flex-1 max-w-[150px]">
                         <ResponsiveContainer width="100%" height="100%">
