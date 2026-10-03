@@ -440,18 +440,6 @@ export const Header: React.FC<HeaderProps> = ({
                     <Trash2 className="w-3.5 h-3.5 text-[#FF3366]" />
                     <span>Clear Database & Start Fresh</span>
                   </button>
-                  <button
-                    onClick={async () => {
-                      if (confirm('Load sample demo turnover units?\n\nThis will load 4 example apartments.')) {
-                        await offlineDB.resetToDefaults();
-                        setShowRoleDropdown(false);
-                      }
-                    }}
-                    className="w-full flex items-center justify-start gap-2 px-2 py-1.5 rounded text-xs font-mono text-slate-400 hover:text-[#00FFB4] hover:bg-slate-800/60 transition-colors"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-[#00FFB4]" />
-                    <span>Load Demo Units</span>
-                  </button>
                 </div>
               </div>
             )}

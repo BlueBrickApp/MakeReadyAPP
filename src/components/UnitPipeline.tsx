@@ -724,16 +724,6 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                 <span>+ REGISTER FIRST UNIT</span>
               </button>
             )}
-            <button
-              onClick={async () => {
-                soundManager.playClick();
-                await offlineDB.resetToDefaults();
-              }}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-slate-900 border border-slate-700 hover:border-slate-600 text-slate-300 font-mono text-xs transition-all"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-[#00FFB4]" />
-              <span>Load Sample Units</span>
-            </button>
           </div>
         </div>
       ) : (

@@ -374,6 +374,7 @@ export default function App() {
                 onSelectUnitId={setSelectedUnitId}
                 checklists={checklists}
                 workOrders={workOrders}
+                fieldLogs={fieldLogs}
                 currentUser={currentUser}
                 technicians={technicians}
                 onReassignTechnician={handleUpdateUnitTechnician}

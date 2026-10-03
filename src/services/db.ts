@@ -214,67 +214,65 @@ export const DEFAULT_TRADE_TASKS: Record<TradeCategory, { name: string; descript
   ]
 };
 
-// Initial Seed Units (4 Project Units with complete Turnover tracking)
-export const INITIAL_UNITS: Unit[] = [
-  {
-    id: 'unit-1789239836266',
-    unit_number: '1001',
-    building: 'Cedar Ridge - Bldg B',
-    floor: 1,
-    floor_plan: 'A1 — 675 SF',
-    current_status: 'Inspection',
-    assigned_technician_id: 'sup-1',
-    assigned_tech: 'Gerry Malovini',
-    move_out_date: '2026-09-12',
-    target_ready_date: '2026-09-19',
-    notes: 'Keys are on the counter. Intake inspection in progress.',
-    last_updated: Date.now() - 1000 * 60 * 60 * 2
-  },
-  {
-    id: 'unit-1002',
-    unit_number: '1002',
-    building: 'Cedar Ridge - Bldg B',
-    floor: 1,
-    floor_plan: 'B1 — 1,075 SF',
-    current_status: 'In-Progress',
-    assigned_technician_id: 'tech-1',
-    assigned_tech: 'Carlos Mendez',
-    move_out_date: '2026-09-10',
-    target_ready_date: '2026-09-21',
-    notes: 'Rough plumbing inspected. Sheetrock repair underway in master hallway.',
-    last_updated: Date.now() - 1000 * 60 * 60 * 4
-  },
-  {
-    id: 'unit-1003',
-    unit_number: '1003',
-    building: 'Cedar Ridge - Bldg B',
-    floor: 2,
-    floor_plan: 'B2 — 1,125 SF',
-    current_status: 'Ready',
-    assigned_technician_id: 'tech-3',
-    assigned_tech: 'Elena Rostova',
-    move_out_date: '2026-09-04',
-    target_ready_date: '2026-09-16',
-    notes: 'All 6 trades completed. Punch list signed off. Ready for manager final walk.',
-    last_updated: Date.now() - 1000 * 60 * 60 * 6
-  },
-  {
-    id: 'unit-1004',
-    unit_number: '1004',
-    building: 'Cedar Ridge - Bldg B',
-    floor: 2,
-    floor_plan: 'C1 — 1,350 SF',
-    current_status: 'Rent Ready',
-    assigned_technician_id: 'sup-1',
-    assigned_tech: 'Gerry Malovini',
-    move_out_date: '2026-08-28',
-    target_ready_date: '2026-09-14',
-    notes: 'Turnover 100% complete. Lockbox installed with ready keys.',
-    signed_off_by: 'Gerry Malovini',
-    signed_off_at: Date.now() - 1000 * 60 * 60 * 12,
-    last_updated: Date.now() - 1000 * 60 * 60 * 24
-  }
+// Known Demo IDs to automatically exclude and purge while preserving all user-created units
+export const DEMO_UNIT_IDS = new Set([
+  'unit-1789239836266',
+  'unit-1002',
+  'unit-1003',
+  'unit-1004',
+  'unit-101',
+  'unit-204',
+  'unit-305',
+  'unit-412'
+]);
+
+export const DEMO_WORK_ORDER_IDS = new Set([
+  'wo-1001-1',
+  'wo-1002-1',
+  'wo-1002-2',
+  'wo-1003-1',
+  'wo-1004-1',
+  'wo-1',
+  'wo-2',
+  'wo-3',
+  'wo-4'
+]);
+
+export const DEMO_LOG_IDS = new Set([
+  'log-1001-1',
+  'log-1002-1',
+  'log-1003-1',
+  'log-1004-1'
+]);
+
+export const DEMO_NOTIF_IDS = new Set([
+  'notif-1002-1',
+  'notif-1003-1'
+]);
+
+const DEMO_UNIT_NOTES = [
+  'Keys are on the counter. Intake inspection in progress.',
+  'Rough plumbing inspected. Sheetrock repair underway in master hallway.',
+  'All 6 trades completed. Punch list signed off. Ready for manager final walk.',
+  'Turnover 100% complete. Lockbox installed with ready keys.'
 ];
+
+export function isDemoUnit(u: Unit | null | undefined): boolean {
+  if (!u) return false;
+  if (DEMO_UNIT_IDS.has(u.id)) return true;
+  if (
+    u.building === 'Cedar Ridge - Bldg B' &&
+    ['1001', '1002', '1003', '1004'].includes(String(u.unit_number)) &&
+    typeof u.notes === 'string' &&
+    DEMO_UNIT_NOTES.some(note => u.notes.includes(note))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+// Initial Seed Units (kept empty so updates never inject demo apartments)
+export const INITIAL_UNITS: Unit[] = [];
 
 class OfflineDB {
   private db: IDBDatabase | null = null;
@@ -397,24 +395,58 @@ class OfflineDB {
       // 1. Real-time Units listener
       const unsubUnits = onSnapshot(collection(firestoreDb, 'units'), async (snapshot) => {
         this.isCloudConnected = true;
-        if (snapshot.empty && !this.simulateOffline) {
-          this.notifyListeners();
-          return;
-        }
         let hasChanges = false;
+        const cloudUnitIds = new Set<string>();
+
+        for (const docSnap of snapshot.docs) {
+          const unit = docSnap.data() as Unit;
+          const unitId = docSnap.id || (unit && unit.id);
+          if (!unitId) continue;
+
+          if (isDemoUnit(unit) || DEMO_UNIT_IDS.has(unitId)) {
+            await this.deleteFromStore('units', unitId);
+            await this.deleteFromFirestore('units', unitId);
+            hasChanges = true;
+            continue;
+          }
+
+          cloudUnitIds.add(unitId);
+        }
+
         for (const change of snapshot.docChanges()) {
           const unit = change.doc.data() as Unit;
+          const unitId = change.doc.id || (unit && unit.id);
+          if (!unitId) continue;
+
+          if (isDemoUnit(unit) || DEMO_UNIT_IDS.has(unitId)) {
+            await this.deleteFromStore('units', unitId);
+            await this.deleteFromFirestore('units', unitId);
+            hasChanges = true;
+            continue;
+          }
+
           if (change.type === 'added' || change.type === 'modified') {
             await this.putInStore('units', unit);
             hasChanges = true;
           } else if (change.type === 'removed') {
-            const unitId = change.doc.id || (unit && unit.id);
-            if (unitId) {
-              await this.deleteFromStore('units', unitId);
+            await this.deleteFromStore('units', unitId);
+            hasChanges = true;
+          }
+        }
+
+        // Ensure any local user-created units that aren't in Firestore yet are pushed to Firestore (never deleted)
+        if (!this.simulateOffline) {
+          const localUnits = await this.getAllFromStore<Unit>('units');
+          for (const localUnit of localUnits) {
+            if (isDemoUnit(localUnit) || DEMO_UNIT_IDS.has(localUnit.id)) {
+              await this.deleteFromStore('units', localUnit.id);
               hasChanges = true;
+            } else if (!cloudUnitIds.has(localUnit.id)) {
+              await this.pushToFirestore('units', localUnit.id, localUnit);
             }
           }
         }
+
         if (hasChanges) this.notifyListeners();
       }, (error) => {
         console.warn('Firestore units sync:', error.message);
@@ -426,11 +458,19 @@ class OfflineDB {
         let hasChanges = false;
         for (const change of snapshot.docChanges()) {
           const chk = change.doc.data() as Checklist;
+          const chkId = change.doc.id || (chk && chk.id);
+          if (chk && DEMO_UNIT_IDS.has(chk.unit_id)) {
+            if (chkId) {
+              await this.deleteFromStore('checklists', chkId);
+              await this.deleteFromFirestore('checklists', chkId);
+              hasChanges = true;
+            }
+            continue;
+          }
           if (change.type === 'added' || change.type === 'modified') {
             await this.putInStore('checklists', chk);
             hasChanges = true;
           } else if (change.type === 'removed') {
-            const chkId = change.doc.id || (chk && chk.id);
             if (chkId) {
               await this.deleteFromStore('checklists', chkId);
               hasChanges = true;
@@ -448,11 +488,19 @@ class OfflineDB {
         let hasChanges = false;
         for (const change of snapshot.docChanges()) {
           const wo = change.doc.data() as WorkOrder;
+          const woId = change.doc.id || (wo && wo.id);
+          if (wo && (DEMO_UNIT_IDS.has(wo.unit_id) || DEMO_WORK_ORDER_IDS.has(woId))) {
+            if (woId) {
+              await this.deleteFromStore('work_orders', woId);
+              await this.deleteFromFirestore('work_orders', woId);
+              hasChanges = true;
+            }
+            continue;
+          }
           if (change.type === 'added' || change.type === 'modified') {
             await this.putInStore('work_orders', wo);
             hasChanges = true;
           } else if (change.type === 'removed') {
-            const woId = change.doc.id || (wo && wo.id);
             if (woId) {
               await this.deleteFromStore('work_orders', woId);
               hasChanges = true;
@@ -470,6 +518,15 @@ class OfflineDB {
         let hasChanges = false;
         for (const change of snapshot.docChanges()) {
           const log = change.doc.data() as FieldLogEntry;
+          const logId = change.doc.id || (log && log.id);
+          if (log && (DEMO_UNIT_IDS.has(log.unit_id) || DEMO_LOG_IDS.has(logId))) {
+            if (logId) {
+              await this.deleteFromStore('field_logs', logId);
+              await this.deleteFromFirestore('field_logs', logId);
+              hasChanges = true;
+            }
+            continue;
+          }
           if (change.type === 'added' || change.type === 'modified') {
             await this.putInStore('field_logs', log);
             hasChanges = true;
@@ -486,6 +543,15 @@ class OfflineDB {
         let hasChanges = false;
         for (const change of snapshot.docChanges()) {
           const notif = change.doc.data() as SupervisorNotification;
+          const notifId = change.doc.id || (notif && notif.id);
+          if (notif && ((notif.unit_id && DEMO_UNIT_IDS.has(notif.unit_id)) || DEMO_NOTIF_IDS.has(notifId))) {
+            if (notifId) {
+              await this.deleteFromStore('notifications', notifId);
+              await this.deleteFromFirestore('notifications', notifId);
+              hasChanges = true;
+            }
+            continue;
+          }
           if (change.type === 'added' || change.type === 'modified') {
             await this.putInStore('notifications', notif);
             hasChanges = true;
@@ -721,69 +787,16 @@ class OfflineDB {
   }
 
   private ensureLocalStorageSeed() {
-    if (localStorage.getItem('utt_cleared_by_user') === 'true') {
-      return;
-    }
-    const currentUnitsRaw = localStorage.getItem('utt_units');
-    if (!currentUnitsRaw || currentUnitsRaw === '[]') {
-      localStorage.setItem('utt_units', JSON.stringify(INITIAL_UNITS));
-      const { checklists, workOrders, fieldLogs, notifications } = this.generateInitialData();
-      localStorage.setItem('utt_checklists', JSON.stringify(checklists));
-      localStorage.setItem('utt_work_orders', JSON.stringify(workOrders));
-      localStorage.setItem('utt_field_logs', JSON.stringify(fieldLogs));
-      localStorage.setItem('utt_notifications', JSON.stringify(notifications));
+    // Do not seed any demo units into localStorage so updates never overwrite or clutter user units
+    if (!localStorage.getItem('utt_sync_queue')) {
       localStorage.setItem('utt_sync_queue', JSON.stringify([]));
     }
   }
 
   private async ensureSeedData() {
-    if (localStorage.getItem('utt_cleared_by_user') === 'true') {
-      return;
-    }
-    const existing = await this.getAllFromStore<Unit>('units');
-    // Ensure all 4 project units exist
-    for (const u of INITIAL_UNITS) {
-      const found = existing.find(e => e.id === u.id || e.unit_number === u.unit_number);
-      if (!found) {
-        await this.putInStore('units', u);
-        this.pushToFirestore('units', u.id, u);
-      }
-    }
-
-    const { checklists, workOrders, fieldLogs, notifications } = this.generateInitialData();
-    const existingChecklists = await this.getAllFromStore<Checklist>('checklists');
-    for (const c of checklists) {
-      const found = existingChecklists.find(ec => ec.id === c.id);
-      if (!found) {
-        await this.putInStore('checklists', c);
-        this.pushToFirestore('checklists', c.id, c);
-      }
-    }
-
-    const existingWOs = await this.getAllFromStore<WorkOrder>('work_orders');
-    for (const w of workOrders) {
-      const found = existingWOs.find(ew => ew.id === w.id);
-      if (!found) {
-        await this.putInStore('work_orders', w);
-        this.pushToFirestore('work_orders', w.id, w);
-      }
-    }
-
-    const existingLogs = await this.getAllFromStore<FieldLogEntry>('field_logs');
-    if (existingLogs.length === 0) {
-      for (const l of fieldLogs) {
-        await this.putInStore('field_logs', l);
-        this.pushToFirestore('field_logs', l.id, l);
-      }
-    }
-
-    const existingNotifs = await this.getAllFromStore<SupervisorNotification>('notifications');
-    if (existingNotifs.length === 0) {
-      for (const n of notifications) {
-        await this.putInStore('notifications', n);
-        this.pushToFirestore('notifications', n.id, n);
-      }
-    }
+    // Do not auto-seed demo units, checklists, work orders, or notifications on app updates.
+    // User-added apartments in IndexedDB and Firestore are preserved as-is.
+    return;
   }
 
   private generateInitialData() {
@@ -1038,14 +1051,21 @@ class OfflineDB {
       '3B/2B': 'C1 — 1,350 SF',
       'Townhome': 'C1 — 1,350 SF'
     };
+    const userUnits: Unit[] = [];
     for (const u of units) {
+      if (isDemoUnit(u) || DEMO_UNIT_IDS.has(u.id)) {
+        await this.deleteFromStore('units', u.id);
+        this.deleteFromFirestore('units', u.id).catch(() => {});
+        continue;
+      }
       if (u.floor_plan && legacyMap[u.floor_plan]) {
         u.floor_plan = legacyMap[u.floor_plan];
         await this.putInStore('units', u);
         this.pushToFirestore('units', u.id, u);
       }
+      userUnits.push(u);
     }
-    return units;
+    return userUnits;
   }
 
   public async getUnitById(id: string): Promise<Unit | undefined> {
@@ -1109,21 +1129,24 @@ class OfflineDB {
 
   public async getWorkOrders(unitId?: string): Promise<WorkOrder[]> {
     const all = await this.getAllFromStore<WorkOrder>('work_orders');
+    const valid = all.filter(w => !DEMO_UNIT_IDS.has(w.unit_id) && !DEMO_WORK_ORDER_IDS.has(w.id));
     if (unitId) {
-      return all.filter(w => w.unit_id === unitId);
+      return valid.filter(w => w.unit_id === unitId);
     }
-    return all.sort((a, b) => b.created_at - a.created_at);
+    return valid.sort((a, b) => b.created_at - a.created_at);
   }
 
   public async getFieldLogs(unitId?: string): Promise<FieldLogEntry[]> {
     const all = await this.getAllFromStore<FieldLogEntry>('field_logs');
-    const filtered = unitId ? all.filter(l => l.unit_id === unitId) : all;
+    const valid = all.filter(l => !DEMO_UNIT_IDS.has(l.unit_id) && !DEMO_LOG_IDS.has(l.id));
+    const filtered = unitId ? valid.filter(l => l.unit_id === unitId) : valid;
     return filtered.sort((a, b) => b.timestamp - a.timestamp);
   }
 
   public async getNotifications(): Promise<SupervisorNotification[]> {
     const all = await this.getAllFromStore<SupervisorNotification>('notifications');
-    return all.sort((a, b) => b.timestamp - a.timestamp);
+    const valid = all.filter(n => (!n.unit_id || !DEMO_UNIT_IDS.has(n.unit_id)) && !DEMO_NOTIF_IDS.has(n.id));
+    return valid.sort((a, b) => b.timestamp - a.timestamp);
   }
 
   public async getSyncQueue(): Promise<SyncQueueItem[]> {
@@ -1948,67 +1971,58 @@ class OfflineDB {
     this.notifyListeners();
   }
 
-  // Purge test apartments and test maintenance work orders/checklists
+  // Purge only demo/test apartments and their demo work orders/checklists while preserving all user-created units
   public async purgeTestUnitsAndMaintenance(): Promise<void> {
-    const isAlreadyPurged = localStorage.getItem('utt_test_data_purged_v2') === 'true';
-    if (isAlreadyPurged) return;
-
-    const testUnitIds = ['unit-101', 'unit-204', 'unit-305', 'unit-412'];
-    const testWorkOrderIds = ['wo-1', 'wo-2', 'wo-3', 'wo-4'];
-
-    // 1. Remove all test units from store and Firestore
-    for (const id of testUnitIds) {
+    // 1. Remove known demo unit IDs from store and Firestore
+    for (const id of DEMO_UNIT_IDS) {
       await this.deleteFromStore('units', id);
-      await this.deleteFromFirestore('units', id);
+      this.deleteFromFirestore('units', id).catch(() => {});
     }
 
-    // 2. Remove all test checklists
+    // Also inspect any stored units that match demo signature
+    const allUnits = await this.getAllFromStore<Unit>('units');
+    for (const u of allUnits) {
+      if (isDemoUnit(u)) {
+        await this.deleteFromStore('units', u.id);
+        this.deleteFromFirestore('units', u.id).catch(() => {});
+      }
+    }
+
+    // 2. Remove demo checklists only
     const allChecklists = await this.getAllFromStore<Checklist>('checklists');
     for (const c of allChecklists) {
-      if (testUnitIds.includes(c.unit_id)) {
+      if (DEMO_UNIT_IDS.has(c.unit_id)) {
         await this.deleteFromStore('checklists', c.id);
-        await this.deleteFromFirestore('checklists', c.id);
+        this.deleteFromFirestore('checklists', c.id).catch(() => {});
       }
     }
 
-    // 3. Remove all test work orders
+    // 3. Remove demo work orders only
     const allWorkOrders = await this.getAllFromStore<WorkOrder>('work_orders');
     for (const wo of allWorkOrders) {
-      if (testUnitIds.includes(wo.unit_id) || testWorkOrderIds.includes(wo.id)) {
+      if (DEMO_UNIT_IDS.has(wo.unit_id) || DEMO_WORK_ORDER_IDS.has(wo.id)) {
         await this.deleteFromStore('work_orders', wo.id);
-        await this.deleteFromFirestore('work_orders', wo.id);
+        this.deleteFromFirestore('work_orders', wo.id).catch(() => {});
       }
     }
 
-    // 4. Remove test notifications
+    // 4. Remove demo field logs only
+    const allLogs = await this.getAllFromStore<FieldLogEntry>('field_logs');
+    for (const l of allLogs) {
+      if (DEMO_UNIT_IDS.has(l.unit_id) || DEMO_LOG_IDS.has(l.id)) {
+        await this.deleteFromStore('field_logs', l.id);
+        this.deleteFromFirestore('field_logs', l.id).catch(() => {});
+      }
+    }
+
+    // 5. Remove demo notifications only
     const allNotifs = await this.getAllFromStore<SupervisorNotification>('notifications');
     for (const n of allNotifs) {
-      if (testUnitIds.includes(n.unit_id)) {
+      if ((n.unit_id && DEMO_UNIT_IDS.has(n.unit_id)) || DEMO_NOTIF_IDS.has(n.id)) {
         await this.deleteFromStore('notifications', n.id);
-        await this.deleteFromFirestore('notifications', n.id);
+        this.deleteFromFirestore('notifications', n.id).catch(() => {});
       }
     }
-
-    // Clean test cache keys
-    localStorage.setItem('utt_test_data_purged_v2', 'true');
-    localStorage.removeItem('utt_units');
-    localStorage.removeItem('utt_checklists');
-    localStorage.removeItem('utt_work_orders');
-
-    // Log clean-up
-    const log: FieldLogEntry = {
-      id: `log-${Date.now()}`,
-      unit_id: 'SYSTEM',
-      unit_number: 'N/A',
-      timestamp: Date.now(),
-      author_name: 'Firebase Live',
-      author_role: 'Maintenance Supervisor',
-      action_type: 'clean_slate',
-      message: 'Sample test units removed. Ready to track your real apartments.',
-      synced: true
-    };
-    await this.putInStore('field_logs', log);
-    await this.pushToFirestore('field_logs', log.id, log);
 
     this.notifyListeners();
   }
