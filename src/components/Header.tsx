@@ -19,7 +19,8 @@ import {
   Smartphone,
   Users,
   Truck,
-  Lock
+  Lock,
+  Pencil
 } from 'lucide-react';
 import { TechnicianUser, SupervisorNotification, SyncQueueItem, Vendor } from '../types';
 import { offlineDB } from '../services/db';
@@ -33,7 +34,7 @@ interface HeaderProps {
   onOpenNotifications: () => void;
   onOpenNewUnit: () => void;
   onOpenShare?: () => void;
-  onOpenManageTeam?: () => void;
+  onOpenManageTeam?: (editTechId?: string) => void;
   onOpenManageVendors?: () => void;
   notifications: SupervisorNotification[];
   syncQueue: SyncQueueItem[];
@@ -121,7 +122,23 @@ export const Header: React.FC<HeaderProps> = ({
                 <span className="hidden sm:inline text-slate-600">•</span>
                 <span className="text-[#00FFB4] font-semibold flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5 text-[#00FFB4]" />
-                  <span>Maintenance Supervisor: Gerry Malovini</span>
+                  <span>
+                    Maintenance Supervisor: {technicians.find(t => t.role === 'Maintenance Supervisor')?.name || 'Gerry Malovini'}
+                  </span>
+                  {onOpenManageTeam && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundManager.playClick();
+                        const sup = technicians.find(t => t.role === 'Maintenance Supervisor');
+                        onOpenManageTeam(sup ? sup.id : 'sup-1');
+                      }}
+                      title="Edit Supervisor Profile & Upload Photo/Files"
+                      className="ml-1 p-0.5 rounded text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  )}
                 </span>
               </p>
             </div>
@@ -336,30 +353,51 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
                 <div className="py-1 space-y-1 max-h-60 overflow-y-auto">
                   {technicians.map(tech => (
-                    <button
+                    <div
                       key={tech.id}
-                      onClick={() => {
-                        soundManager.playClick();
-                        onUserChange(tech);
-                        setShowRoleDropdown(false);
-                      }}
-                      className={`w-full flex items-center gap-2.5 p-2 rounded-md text-left transition-all ${
+                      className={`w-full flex items-center justify-between gap-1.5 p-2 rounded-md text-left transition-all ${
                         tech.id === currentUser.id 
                           ? 'bg-[#00FFB4]/15 border border-[#00FFB4]/40 text-white' 
                           : 'hover:bg-slate-800/80 text-slate-300'
                       }`}
                     >
-                      <img src={tech.avatar} alt={tech.name} className="w-7 h-7 rounded-full object-cover" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold truncate flex items-center gap-1.5">
-                          <span>{tech.name}</span>
-                          {tech.role === 'Maintenance Supervisor' && (
-                            <span className="text-[9px] font-mono px-1 rounded bg-[#00FFB4]/20 text-[#00FFB4]">SUP</span>
-                          )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundManager.playClick();
+                          onUserChange(tech);
+                          setShowRoleDropdown(false);
+                        }}
+                        className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
+                      >
+                        <img src={tech.avatar} alt={tech.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-semibold truncate flex items-center gap-1.5">
+                            <span>{tech.name}</span>
+                            {tech.role === 'Maintenance Supervisor' && (
+                              <span className="text-[9px] font-mono px-1 rounded bg-[#00FFB4]/20 text-[#00FFB4]">SUP</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">{tech.trade_specialty}</div>
                         </div>
-                        <div className="text-[10px] text-slate-400 truncate">{tech.trade_specialty}</div>
-                      </div>
-                    </button>
+                      </button>
+
+                      {onOpenManageTeam && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            soundManager.playClick();
+                            setShowRoleDropdown(false);
+                            onOpenManageTeam(tech.id);
+                          }}
+                          title={`Edit ${tech.name} profile & upload photo/file`}
+                          className="p-1.5 rounded text-slate-400 hover:text-amber-300 hover:bg-slate-800 transition-colors shrink-0"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
                 <div className="pt-2 border-t border-slate-800/80 space-y-1">

@@ -56,7 +56,9 @@ export const DEFAULT_TECHNICIANS: TechnicianUser[] = [
     trade_specialty: 'Operations & Quality Sign-Off',
     badge_id: 'SUP-101',
     avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
-    phone: '(555) 890-1234'
+    phone: '(555) 890-1234',
+    email: 'GerardoMalovini@gmail.com',
+    notes: 'Lead Maintenance Supervisor - Property Turnover & Final Readiness Certification'
   },
   {
     id: 'tech-1',
@@ -523,7 +525,7 @@ class OfflineDB {
           list.push(docSnap.data() as TechnicianUser);
         }
 
-        // Ensure Gerry Malovini is configured as Maintenance Supervisor
+        // Ensure Gerry Malovini is configured as Maintenance Supervisor if default Sarah Vance is still there
         const gerrySupervisor: TechnicianUser = {
           id: 'sup-1',
           name: 'Gerry Malovini',
@@ -531,13 +533,15 @@ class OfflineDB {
           trade_specialty: 'Operations & Quality Sign-Off',
           badge_id: 'SUP-101',
           avatar: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
-          phone: '(555) 890-1234'
+          phone: '(555) 890-1234',
+          email: 'GerardoMalovini@gmail.com',
+          notes: 'Lead Maintenance Supervisor - Property Turnover & Final Readiness Certification'
         };
 
-        const existingSupIndex = list.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase() === 'gerry malovini');
+        const existingSupIndex = list.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase().includes('malovini'));
         if (existingSupIndex >= 0) {
-          if (list[existingSupIndex].name !== 'Gerry Malovini' || list[existingSupIndex].role !== 'Maintenance Supervisor') {
-            const updatedSup = { ...list[existingSupIndex], name: 'Gerry Malovini', role: 'Maintenance Supervisor' as const };
+          if (list[existingSupIndex].name === 'Sarah Vance') {
+            const updatedSup = { ...list[existingSupIndex], name: 'Gerry Malovini', role: 'Maintenance Supervisor' as const, email: list[existingSupIndex].email || 'GerardoMalovini@gmail.com' };
             list[existingSupIndex] = updatedSup;
             await this.pushToFirestore('technicians', updatedSup.id, updatedSup);
           }
@@ -1754,10 +1758,10 @@ class OfflineDB {
     if (stored && stored.length > 0) {
       let updated = false;
       const gerrySupervisor = DEFAULT_TECHNICIANS[0];
-      const supIdx = stored.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase() === 'gerry malovini');
+      const supIdx = stored.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase().includes('malovini'));
       if (supIdx >= 0) {
-        if (stored[supIdx].name !== 'Gerry Malovini' || stored[supIdx].role !== 'Maintenance Supervisor') {
-          stored[supIdx] = { ...stored[supIdx], name: 'Gerry Malovini', role: 'Maintenance Supervisor' };
+        if (stored[supIdx].name === 'Sarah Vance') {
+          stored[supIdx] = { ...stored[supIdx], name: 'Gerry Malovini', role: 'Maintenance Supervisor', email: stored[supIdx].email || 'GerardoMalovini@gmail.com' };
           await this.putInStore('technicians', stored[supIdx]);
           this.pushToFirestore('technicians', stored[supIdx].id, stored[supIdx]);
           updated = true;
@@ -1780,9 +1784,11 @@ class OfflineDB {
         const parsed: TechnicianUser[] = JSON.parse(local);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const gerrySupervisor = DEFAULT_TECHNICIANS[0];
-          const supIdx = parsed.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase() === 'gerry malovini');
+          const supIdx = parsed.findIndex(t => t.id === 'sup-1' || t.name === 'Sarah Vance' || t.name.toLowerCase().includes('malovini'));
           if (supIdx >= 0) {
-            parsed[supIdx] = { ...parsed[supIdx], name: 'Gerry Malovini', role: 'Maintenance Supervisor' };
+            if (parsed[supIdx].name === 'Sarah Vance') {
+              parsed[supIdx] = { ...parsed[supIdx], name: 'Gerry Malovini', role: 'Maintenance Supervisor' };
+            }
           } else {
             parsed.unshift(gerrySupervisor);
           }
@@ -1799,6 +1805,19 @@ class OfflineDB {
     await this.putInStore('technicians', tech);
     await this.pushToFirestore('technicians', tech.id, tech);
     ACTIVE_TECHNICIANS = [...ACTIVE_TECHNICIANS.filter(t => t.id !== tech.id), tech];
+    localStorage.setItem('utt_technicians', JSON.stringify(ACTIVE_TECHNICIANS));
+    this.notifyListeners();
+  }
+
+  public async updateTechnician(tech: TechnicianUser): Promise<void> {
+    await this.putInStore('technicians', tech);
+    await this.pushToFirestore('technicians', tech.id, tech);
+    const exists = ACTIVE_TECHNICIANS.some(t => t.id === tech.id);
+    if (exists) {
+      ACTIVE_TECHNICIANS = ACTIVE_TECHNICIANS.map(t => t.id === tech.id ? tech : t);
+    } else {
+      ACTIVE_TECHNICIANS = [...ACTIVE_TECHNICIANS, tech];
+    }
     localStorage.setItem('utt_technicians', JSON.stringify(ACTIVE_TECHNICIANS));
     this.notifyListeners();
   }

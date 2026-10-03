@@ -68,6 +68,7 @@ export default function App() {
   const [isNewUnitModalOpen, setIsNewUnitModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isManageTeamModalOpen, setIsManageTeamModalOpen] = useState(false);
+  const [initialEditingTechId, setInitialEditingTechId] = useState<string | null>(null);
   const [isManageVendorsModalOpen, setIsManageVendorsModalOpen] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>(ACTIVE_VENDORS);
   const [conflictData, setConflictData] = useState<{
@@ -255,6 +256,16 @@ export default function App() {
     setTechnicians(updated);
   };
 
+  // Handler: Update technician / supervisor profile
+  const handleUpdateTechnician = async (tech: TechnicianUser) => {
+    await offlineDB.updateTechnician(tech);
+    const updated = await offlineDB.getTechnicians();
+    setTechnicians(updated);
+    if (currentUser.id === tech.id) {
+      setCurrentUser(tech);
+    }
+  };
+
   // Handler: Delete technician from maintenance team
   const handleDeleteTechnician = async (id: string) => {
     await offlineDB.deleteTechnician(id);
@@ -301,7 +312,10 @@ export default function App() {
         onOpenNotifications={() => setIsNotificationModalOpen(true)}
         onOpenNewUnit={() => setIsNewUnitModalOpen(true)}
         onOpenShare={() => setIsShareModalOpen(true)}
-        onOpenManageTeam={() => setIsManageTeamModalOpen(true)}
+        onOpenManageTeam={(techId?: string) => {
+          setInitialEditingTechId(techId || null);
+          setIsManageTeamModalOpen(true);
+        }}
         onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
         notifications={notifications}
         syncQueue={syncQueue}
@@ -463,10 +477,15 @@ export default function App() {
 
       <ManageTeamModal
         isOpen={isManageTeamModalOpen}
-        onClose={() => setIsManageTeamModalOpen(false)}
+        onClose={() => {
+          setIsManageTeamModalOpen(false);
+          setInitialEditingTechId(null);
+        }}
         technicians={technicians}
         currentUser={currentUser}
+        initialEditingTechId={initialEditingTechId}
         onAddTechnician={handleAddTechnician}
+        onUpdateTechnician={handleUpdateTechnician}
         onDeleteTechnician={handleDeleteTechnician}
       />
 

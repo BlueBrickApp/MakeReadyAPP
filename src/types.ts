@@ -129,6 +129,15 @@ export interface SupervisorNotification {
   email_dispatched?: boolean;
 }
 
+export interface TechnicianAttachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  data_url: string;
+  uploaded_at: number;
+}
+
 export interface TechnicianUser {
   id: string;
   name: string;
@@ -137,6 +146,9 @@ export interface TechnicianUser {
   badge_id: string;
   avatar: string;
   phone: string;
+  email?: string;
+  notes?: string;
+  attachments?: TechnicianAttachment[];
 }
 
 export type VendorStatus = 'Active' | 'Preferred' | 'On-Call';
