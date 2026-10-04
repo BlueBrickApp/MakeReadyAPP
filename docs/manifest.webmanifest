@@ -1,7 +1,7 @@
 {
-  "name": "Unit Turnover Tracker",
-  "short_name": "TurnoverTracker",
-  "description": "High-contrast field operations management tool for apartment turnover, trade-specific make-ready workflows, offline sync, and supervisor readiness sign-off.",
+  "name": "Southerly Make Ready's",
+  "short_name": "Southerly Make Ready's",
+  "description": "Southerly Make Ready's — High-contrast field operations management tool for apartment turnover, trade-specific make-ready workflows, vendor assignments, offline sync, and supervisor readiness sign-off.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#080C14",
