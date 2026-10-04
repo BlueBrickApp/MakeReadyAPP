@@ -85,6 +85,14 @@ export const FLOOR_PLAN_GROUPS = [
 
 export type FloorPlan = string;
 
+export interface UnitVendorAssignment {
+  vendor_id: string;
+  vendor_name: string;
+  trade_category: string;
+  task_note?: string;
+  assigned_at: number;
+}
+
 export interface Unit {
   id: string;
   unit_number: string;
@@ -94,6 +102,9 @@ export interface Unit {
   floor: number;
   assigned_technician_id: string;
   assigned_tech?: string;
+  assigned_vendor_id?: string;
+  assigned_vendor?: string;
+  assigned_vendors?: UnitVendorAssignment[];
   move_out_date: string;
   target_ready_date: string;
   last_updated: number;

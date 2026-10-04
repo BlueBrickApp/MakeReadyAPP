@@ -20,7 +20,8 @@ import {
   Users,
   Truck,
   Lock,
-  Pencil
+  Pencil,
+  HardDrive
 } from 'lucide-react';
 import { TechnicianUser, SupervisorNotification, SyncQueueItem, Vendor } from '../types';
 import { offlineDB } from '../services/db';
@@ -36,6 +37,7 @@ interface HeaderProps {
   onOpenShare?: () => void;
   onOpenManageTeam?: (editTechId?: string) => void;
   onOpenManageVendors?: () => void;
+  onOpenExportCode?: () => void;
   notifications: SupervisorNotification[];
   syncQueue: SyncQueueItem[];
   onSyncCompleted?: () => void;
@@ -51,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenShare,
   onOpenManageTeam,
   onOpenManageVendors,
+  onOpenExportCode,
   notifications,
   syncQueue,
   onSyncCompleted
@@ -106,12 +109,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-black border border-[#00FFB4] flex items-center justify-center shadow-[0_0_15px_rgba(0,255,180,0.35)]">
-              <span className="font-['Chakra_Petch'] font-bold text-lg text-[#00FFB4]">UT</span>
+              <span className="font-['Chakra_Petch'] font-bold text-lg text-[#00FFB4]">SM</span>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-['Chakra_Petch'] font-bold text-lg tracking-wider text-white">
-                  UNIT TURNOVER <span className="text-[#00FFB4]">TRACKER</span>
+                  SOUTHERLY <span className="text-[#00FFB4]">MAKE READY'S</span>
                 </h1>
                 <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono tracking-widest font-semibold bg-[#00FFB4]/10 text-[#00FFB4] border border-[#00FFB4]/30 uppercase">
                   v2.4 OPS
@@ -292,6 +295,19 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-[#00FFB4] font-bold border border-slate-700">
                 {vendors.length}
               </span>
+            </button>
+          )}
+
+          {/* Save Full Code / Backup to Hard Drive Button */}
+          {onOpenExportCode && (
+            <button
+              id="header-export-code-btn"
+              onClick={() => { soundManager.playClick(); onOpenExportCode(); }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-900 border border-[#00E5FF]/50 hover:border-[#00FFB4] text-[#00E5FF] hover:text-[#00FFB4] font-mono text-xs transition-all shadow-sm"
+              title="Download or Copy Complete Application Source Code & Database Backup to Hard Drive"
+            >
+              <HardDrive className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">SAVE CODE</span>
             </button>
           )}
 

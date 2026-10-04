@@ -5,6 +5,7 @@
 
 import { 
   Unit, 
+  UnitVendorAssignment,
   Checklist, 
   Task, 
   WorkOrder, 
@@ -1361,6 +1362,141 @@ class OfflineDB {
     return updatedUnit;
   }
 
+  // Assign a Vendor / Contractor to a Unit (supports multiple vendor task assignments per unit, plus inline custom vendor creation)
+  public async assignVendorToUnit(
+    unitId: string,
+    vendorIdOrCustomName: string,
+    taskNote: string,
+    author: TechnicianUser
+  ): Promise<Unit> {
+    const unit = await this.getUnitById(unitId);
+    if (!unit) throw new Error('Unit not found');
+
+    const allVendors = await this.getVendors();
+    let vendorObj = allVendors.find(v => v.id === vendorIdOrCustomName);
+
+    // If user typed a new vendor name directly on the apartment card
+    if (!vendorObj && vendorIdOrCustomName.trim()) {
+      const customName = vendorIdOrCustomName.replace(/^custom:/i, '').trim();
+      const existingByName = allVendors.find(v => v.name.toLowerCase() === customName.toLowerCase());
+      if (existingByName) {
+        vendorObj = existingByName;
+      } else {
+        const newVendor: Vendor = {
+          id: `ven-${Date.now()}`,
+          name: customName,
+          trade_category: taskNote.trim() || 'General Make-Ready',
+          contact_name: 'Field Dispatch',
+          phone: '',
+          status: 'Active'
+        };
+        await this.addVendor(newVendor);
+        vendorObj = newVendor;
+      }
+    }
+
+    if (!vendorObj) throw new Error('Vendor not found');
+
+    const existingList: UnitVendorAssignment[] = Array.isArray(unit.assigned_vendors)
+      ? [...unit.assigned_vendors]
+      : [];
+
+    const newAssignment: UnitVendorAssignment = {
+      vendor_id: vendorObj.id,
+      vendor_name: vendorObj.name,
+      trade_category: vendorObj.trade_category,
+      task_note: taskNote.trim() || undefined,
+      assigned_at: Date.now()
+    };
+
+    const updatedList = [...existingList, newAssignment];
+
+    const updatedUnit: Unit = {
+      ...unit,
+      assigned_vendor_id: vendorObj.id,
+      assigned_vendor: vendorObj.name,
+      assigned_vendors: updatedList,
+      last_updated: Date.now()
+    };
+
+    await this.putInStore('units', updatedUnit);
+    await this.pushToFirestore('units', updatedUnit.id, updatedUnit);
+
+    const logEntry: FieldLogEntry = {
+      id: `log-${Date.now()}`,
+      unit_id: unit.id,
+      unit_number: unit.unit_number,
+      timestamp: Date.now(),
+      author_name: author.name,
+      author_role: author.role,
+      action_type: 'note_added',
+      message: `Assigned vendor "${vendorObj.name}" (${vendorObj.trade_category}) to Unit #${unit.unit_number}${taskNote.trim() ? ` — Task: ${taskNote.trim()}` : ''}.`,
+      synced: this.isConnected
+    };
+    await this.putInStore('field_logs', logEntry);
+    this.pushToFirestore('field_logs', logEntry.id, logEntry);
+
+    if (!this.isConnected) {
+      await this.enqueueSync('unit', unit.id, 'update', updatedUnit);
+      await this.enqueueSync('field_log', logEntry.id, 'create', logEntry);
+    }
+
+    this.notifyListeners();
+    return updatedUnit;
+  }
+
+  // Remove an assigned Vendor from a Unit
+  public async removeVendorFromUnit(
+    unitId: string,
+    vendorId: string,
+    assignedAt: number | undefined,
+    author: TechnicianUser
+  ): Promise<Unit> {
+    const unit = await this.getUnitById(unitId);
+    if (!unit) throw new Error('Unit not found');
+
+    const existingList: UnitVendorAssignment[] = Array.isArray(unit.assigned_vendors)
+      ? [...unit.assigned_vendors]
+      : [];
+
+    const updatedList = existingList.filter(v => {
+      if (assignedAt !== undefined) {
+        return !(v.vendor_id === vendorId && v.assigned_at === assignedAt);
+      }
+      return v.vendor_id !== vendorId;
+    });
+
+    const latestVendor = updatedList.length > 0 ? updatedList[updatedList.length - 1] : undefined;
+
+    const updatedUnit: Unit = {
+      ...unit,
+      assigned_vendor_id: latestVendor ? latestVendor.vendor_id : '',
+      assigned_vendor: latestVendor ? latestVendor.vendor_name : '',
+      assigned_vendors: updatedList,
+      last_updated: Date.now()
+    };
+
+    await this.putInStore('units', updatedUnit);
+    await this.pushToFirestore('units', updatedUnit.id, updatedUnit);
+
+    const logEntry: FieldLogEntry = {
+      id: `log-${Date.now()}`,
+      unit_id: unit.id,
+      unit_number: unit.unit_number,
+      timestamp: Date.now(),
+      author_name: author.name,
+      author_role: author.role,
+      action_type: 'note_added',
+      message: `Removed vendor assignment from Unit #${unit.unit_number}.`,
+      synced: this.isConnected
+    };
+    await this.putInStore('field_logs', logEntry);
+    this.pushToFirestore('field_logs', logEntry.id, logEntry);
+
+    this.notifyListeners();
+    return updatedUnit;
+  }
+
   // Move Unit stage (e.g. from Kanban drag or supervisor action)
   public async updateUnitStage(unitId: string, newStage: TurnoverStage, author: TechnicianUser): Promise<Unit> {
     const unit = await this.getUnitById(unitId);
@@ -1538,10 +1674,30 @@ class OfflineDB {
   public async createUnit(unitData: Omit<Unit, 'id' | 'last_updated'>, author?: TechnicianUser): Promise<Unit> {
     const allTechs = await this.getTechnicians();
     const assignedTechObj = allTechs.find(t => t.id === unitData.assigned_technician_id);
+    const allVendors = await this.getVendors();
+    const assignedVendorObj = unitData.assigned_vendor_id
+      ? allVendors.find(v => v.id === unitData.assigned_vendor_id)
+      : undefined;
+
+    const initialVendors: UnitVendorAssignment[] = Array.isArray(unitData.assigned_vendors)
+      ? unitData.assigned_vendors
+      : assignedVendorObj
+      ? [
+          {
+            vendor_id: assignedVendorObj.id,
+            vendor_name: assignedVendorObj.name,
+            trade_category: assignedVendorObj.trade_category,
+            assigned_at: Date.now()
+          }
+        ]
+      : [];
 
     const newUnit: Unit = {
       ...unitData,
       assigned_tech: unitData.assigned_tech || assignedTechObj?.name || (author ? author.name : 'Supervisor'),
+      assigned_vendor_id: assignedVendorObj?.id || unitData.assigned_vendor_id || '',
+      assigned_vendor: assignedVendorObj?.name || unitData.assigned_vendor || '',
+      assigned_vendors: initialVendors,
       id: `unit-${Date.now()}`,
       last_updated: Date.now()
     };

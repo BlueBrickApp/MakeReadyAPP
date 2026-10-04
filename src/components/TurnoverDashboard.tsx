@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Wrench, 
   Zap, 
@@ -14,7 +14,9 @@ import {
   Building,
   ChevronDown,
   TrendingUp,
-  Activity
+  Activity,
+  Truck,
+  Plus
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -25,12 +27,14 @@ import {
 } from 'recharts';
 import { 
   Unit, 
+  UnitVendorAssignment,
   Checklist, 
   WorkOrder, 
   FieldLogEntry,
   TradeCategory, 
   TRADE_CATEGORIES,
-  TechnicianUser 
+  TechnicianUser,
+  Vendor
 } from '../types';
 import { soundManager } from '../services/audio';
 
@@ -43,7 +47,11 @@ interface TurnoverDashboardProps {
   fieldLogs?: FieldLogEntry[];
   currentUser: TechnicianUser;
   technicians?: TechnicianUser[];
+  vendors?: Vendor[];
   onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
+  onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string) => Promise<void>;
+  onRemoveVendorFromUnit?: (unitId: string, vendorId: string, assignedAt?: number) => Promise<void>;
+  onOpenManageVendors?: () => void;
   onOpenChecklistForTrade: (unitId: string, trade: TradeCategory) => void;
   onOpenDispatcherForUnit: (unitId: string, trade: TradeCategory) => void;
   onOpenSignOff: (unitId: string) => void;
@@ -253,11 +261,20 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
   fieldLogs = [],
   currentUser,
   technicians = [],
+  vendors = [],
   onReassignTechnician,
+  onAssignVendorToUnit,
+  onRemoveVendorFromUnit,
+  onOpenManageVendors,
   onOpenChecklistForTrade,
   onOpenDispatcherForUnit,
   onOpenSignOff
 }) => {
+  const [showAddVendorForm, setShowAddVendorForm] = useState(false);
+  const [selectedVendorId, setSelectedVendorId] = useState('');
+  const [customVendorName, setCustomVendorName] = useState('');
+  const [vendorTaskNote, setVendorTaskNote] = useState('');
+
   const currentUnit = units.find(u => u.id === selectedUnitId) || units[0];
 
   // Precompute 7-day turnover velocity analytics for all units
@@ -349,34 +366,204 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
               </div>
             </div>
             
-            <div className="space-y-1 text-xs text-slate-400 font-mono">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+            <div className="space-y-2 text-xs text-slate-400 font-mono pt-1">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <span>
                   {currentUnit?.building} {currentUnit?.floor ? `• Floor ${currentUnit.floor}` : ''} • Target Ready: <strong className="text-slate-200">{currentUnit?.target_ready_date}</strong>
                 </span>
                 <span className="text-slate-600">•</span>
-                <div className="inline-flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="text-cyan-400">Lead Tech:</span>
-                  {technicians.length > 0 && onReassignTechnician ? (
-                    <select
-                      id="dashboard-reassign-tech-select"
-                      value={currentUnit.assigned_technician_id || ''}
-                      onChange={(e) => onReassignTechnician(currentUnit.id, e.target.value)}
-                      className="bg-slate-900 border border-slate-700 hover:border-[#00FFB4] text-white font-semibold text-xs px-2 py-0.5 rounded focus:outline-none focus:border-[#00FFB4] cursor-pointer transition-colors"
-                      title="Change Assigned Maintenance Technician"
-                    >
-                      {technicians.map((t) => (
-                        <option key={t.id} value={t.id} className="bg-slate-900 text-white">
-                          {t.name} ({t.trade_specialty})
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <strong className="text-white">{currentUnit?.assigned_tech || 'Unassigned'}</strong>
-                  )}
-                </div>
+                {(() => {
+                  const assignedTechObj =
+                    technicians.find(t => t.id === currentUnit.assigned_technician_id) ||
+                    technicians.find(t => t.name === currentUnit.assigned_tech) ||
+                    technicians[0];
+
+                  return (
+                    <div className="inline-flex items-center gap-2 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-800">
+                      {assignedTechObj?.avatar ? (
+                        <img
+                          src={assignedTechObj.avatar}
+                          alt={assignedTechObj.name}
+                          className="w-6 h-6 rounded-full object-cover border border-[#00FFB4]/50 shrink-0"
+                        />
+                      ) : (
+                        <User className="w-4 h-4 text-cyan-400" />
+                      )}
+                      <span className="text-cyan-400">Lead Tech:</span>
+                      {technicians.length > 0 && onReassignTechnician ? (
+                        <select
+                          id="dashboard-reassign-tech-select"
+                          value={currentUnit.assigned_technician_id || ''}
+                          onChange={(e) => onReassignTechnician(currentUnit.id, e.target.value)}
+                          className="bg-slate-950 border border-slate-700 hover:border-[#00FFB4] text-white font-semibold text-xs px-2 py-0.5 rounded focus:outline-none focus:border-[#00FFB4] cursor-pointer transition-colors"
+                          title="Change Assigned Maintenance Technician"
+                        >
+                          {technicians.map((t) => (
+                            <option key={t.id} value={t.id} className="bg-slate-900 text-white">
+                              {t.name} ({t.trade_specialty})
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <strong className="text-white">{assignedTechObj?.name || currentUnit?.assigned_tech || 'Unassigned'}</strong>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
+
+              {/* Assigned Vendors for this Unit */}
+              {(() => {
+                const unitVendors: UnitVendorAssignment[] =
+                  Array.isArray(currentUnit.assigned_vendors) && currentUnit.assigned_vendors.length > 0
+                    ? currentUnit.assigned_vendors
+                    : currentUnit.assigned_vendor
+                    ? [
+                        {
+                          vendor_id: currentUnit.assigned_vendor_id || 'vendor-legacy',
+                          vendor_name: currentUnit.assigned_vendor,
+                          trade_category: 'Assigned Contractor',
+                          assigned_at: currentUnit.last_updated
+                        }
+                      ]
+                    : [];
+
+                return (
+                  <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-amber-300 font-semibold">
+                        <Truck className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Assigned Unit Vendors ({unitVendors.length}):</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundManager.playClick();
+                          setShowAddVendorForm(!showAddVendorForm);
+                          if (!selectedVendorId) {
+                            setSelectedVendorId(vendors[0]?.id || 'CUSTOM');
+                          }
+                        }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#00FFB4]/15 hover:bg-[#00FFB4]/25 text-[#00FFB4] border border-[#00FFB4]/40 text-[11px] font-mono font-semibold transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{showAddVendorForm ? 'Cancel' : 'Assign Vendor to Unit'}</span>
+                      </button>
+                    </div>
+
+                    {unitVendors.length === 0 ? (
+                      <div className="text-[11px] text-slate-500">
+                        No external vendors assigned to Unit #{currentUnit.unit_number} yet. Click "+ Assign Vendor to Unit" to assign tasks.
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {unitVendors.map((uv, idx) => (
+                          <div
+                            key={`${uv.vendor_id}-${uv.assigned_at || idx}`}
+                            className="flex items-center gap-2 bg-slate-950 border border-slate-700/80 px-2.5 py-1 rounded-md text-[11px]"
+                          >
+                            <span className="text-white font-semibold">{uv.vendor_name}</span>
+                            <span className="text-slate-500">·</span>
+                            <span className="text-amber-300">{uv.trade_category}</span>
+                            {uv.task_note && (
+                              <>
+                                <span className="text-slate-500">·</span>
+                                <span className="text-cyan-300">{uv.task_note}</span>
+                              </>
+                            )}
+                            {onRemoveVendorFromUnit && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  soundManager.playClick();
+                                  onRemoveVendorFromUnit(currentUnit.id, uv.vendor_id, uv.assigned_at);
+                                }}
+                                title="Remove vendor from unit"
+                                className="text-slate-500 hover:text-[#FF3366] ml-1"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {showAddVendorForm && (
+                      <div className="pt-2 border-t border-slate-800 flex flex-wrap items-center gap-2">
+                        <select
+                          value={selectedVendorId}
+                          onChange={(e) => setSelectedVendorId(e.target.value)}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs font-mono px-2.5 py-1.5 rounded focus:outline-none focus:border-[#00FFB4]"
+                        >
+                          {vendors.map((v) => (
+                            <option key={v.id} value={v.id}>
+                              {v.name} ({v.trade_category})
+                            </option>
+                          ))}
+                          <option value="CUSTOM">+ Write New Vendor Name...</option>
+                        </select>
+
+                        {selectedVendorId === 'CUSTOM' && (
+                          <input
+                            type="text"
+                            value={customVendorName}
+                            onChange={(e) => setCustomVendorName(e.target.value)}
+                            placeholder="Vendor or company name..."
+                            className="bg-slate-950 border border-[#00FFB4]/60 text-white text-xs font-mono px-2.5 py-1.5 rounded focus:outline-none focus:border-[#00FFB4]"
+                          />
+                        )}
+
+                        <input
+                          type="text"
+                          value={vendorTaskNote}
+                          onChange={(e) => setVendorTaskNote(e.target.value)}
+                          placeholder="Task assigned to vendor (e.g. Carpet, Paint, Clean)..."
+                          className="flex-1 min-w-[200px] bg-slate-950 border border-slate-700 text-white text-xs font-mono px-2.5 py-1.5 rounded focus:outline-none focus:border-[#00FFB4]"
+                        />
+
+                        <button
+                          type="button"
+                          disabled={
+                            !selectedVendorId ||
+                            (selectedVendorId === 'CUSTOM' && !customVendorName.trim())
+                          }
+                          onClick={async () => {
+                            if (!onAssignVendorToUnit) return;
+                            const targetVendor =
+                              selectedVendorId === 'CUSTOM'
+                                ? `custom:${customVendorName.trim()}`
+                                : selectedVendorId;
+                            if (!targetVendor) return;
+                            soundManager.playClick();
+                            await onAssignVendorToUnit(currentUnit.id, targetVendor, vendorTaskNote);
+                            setCustomVendorName('');
+                            setVendorTaskNote('');
+                            setShowAddVendorForm(false);
+                          }}
+                          className="px-3 py-1.5 rounded bg-[#00FFB4] text-black font-mono font-bold text-xs hover:brightness-110 disabled:opacity-40"
+                        >
+                          Save Vendor Assignment
+                        </button>
+
+                        {onOpenManageVendors && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundManager.playClick();
+                              onOpenManageVendors();
+                            }}
+                            className="px-2.5 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 text-xs font-mono"
+                          >
+                            + New Vendor
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {currentUnit?.notes && (
                 <p className="text-[11px] text-slate-300 italic bg-slate-900 px-2 py-1 rounded border border-slate-800">
                   <span className="font-semibold text-slate-400 not-italic mr-1">Notes:</span>

@@ -16,8 +16,8 @@ import {
   Key,
   Shield
 } from 'lucide-react';
-import { Unit, TechnicianUser, FLOOR_PLAN_GROUPS } from '../types';
-import { ACTIVE_TECHNICIANS } from '../services/db';
+import { Unit, TechnicianUser, Vendor, FLOOR_PLAN_GROUPS } from '../types';
+import { ACTIVE_TECHNICIANS, ACTIVE_VENDORS } from '../services/db';
 import { soundManager } from '../services/audio';
 
 interface NewUnitModalProps {
@@ -25,6 +25,7 @@ interface NewUnitModalProps {
   onClose: () => void;
   currentUser: TechnicianUser;
   technicians?: TechnicianUser[];
+  vendors?: Vendor[];
   onSwitchToSupervisor?: () => void;
   onCreateUnit: (unitData: Omit<Unit, 'id' | 'last_updated'>) => Promise<void>;
 }
@@ -34,6 +35,7 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
   onClose,
   currentUser,
   technicians,
+  vendors,
   onCreateUnit
 }) => {
   const [unitNumber, setUnitNumber] = useState('');
@@ -41,6 +43,8 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
   const [building, setBuilding] = useState('Cedar Ridge - Bldg B');
   const [floor, setFloor] = useState<number>(2);
   const [assignedTechId, setAssignedTechId] = useState(currentUser.id);
+  const [assignedVendorId, setAssignedVendorId] = useState<string>('');
+  const [vendorTaskNote, setVendorTaskNote] = useState<string>('');
   const [moveOutDate, setMoveOutDate] = useState(new Date().toISOString().split('T')[0]);
   const [targetReadyDate, setTargetReadyDate] = useState(
     new Date(Date.now() + 1000 * 60 * 60 * 24 * 7).toISOString().split('T')[0]
@@ -143,6 +147,11 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
     setIsSubmitting(true);
     soundManager.playSyncSuccess();
     try {
+      const availableVendors = vendors && vendors.length > 0 ? vendors : ACTIVE_VENDORS;
+      const selectedVendorObj = assignedVendorId
+        ? availableVendors.find(v => v.id === assignedVendorId)
+        : undefined;
+
       await onCreateUnit({
         unit_number: unitNumber.trim(),
         current_status: 'Inspection',
@@ -150,6 +159,19 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
         building,
         floor: Number(floor),
         assigned_technician_id: assignedTechId,
+        assigned_vendor_id: selectedVendorObj ? selectedVendorObj.id : undefined,
+        assigned_vendor: selectedVendorObj ? selectedVendorObj.name : undefined,
+        assigned_vendors: selectedVendorObj
+          ? [
+              {
+                vendor_id: selectedVendorObj.id,
+                vendor_name: selectedVendorObj.name,
+                trade_category: selectedVendorObj.trade_category,
+                task_note: vendorTaskNote.trim() || undefined,
+                assigned_at: Date.now()
+              }
+            ]
+          : [],
         move_out_date: moveOutDate,
         target_ready_date: targetReadyDate,
         notes: notes.trim() || 'Unit turnover intake initiated.'
@@ -290,22 +312,67 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
             </div>
           </div>
 
-          {/* Assigned Tech Lead */}
-          <div className="space-y-1">
-            <label className="block text-slate-300 font-mono text-[11px]">Assigned Turn Tech Lead</label>
-            <select
-              id="select-assigned-tech"
-              value={assignedTechId}
-              onChange={(e) => setAssignedTechId(e.target.value)}
-              className="w-full p-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 focus:outline-none focus:border-[#00FFB4]"
-            >
-              {(technicians && technicians.length > 0 ? technicians : ACTIVE_TECHNICIANS).map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} ({t.trade_specialty})
-                </option>
-              ))}
-            </select>
+          {/* Assigned Tech Lead (with Tech Photo) & Assigned Vendor */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="block text-slate-300 font-mono text-[11px]">Assigned Turn Tech Lead</label>
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const techList = technicians && technicians.length > 0 ? technicians : ACTIVE_TECHNICIANS;
+                  const selTech = techList.find(t => t.id === assignedTechId) || techList[0];
+                  return selTech ? (
+                    <img
+                      src={selTech.avatar}
+                      alt={selTech.name}
+                      className="w-8 h-8 rounded-full object-cover border border-[#00FFB4]/50 shrink-0"
+                    />
+                  ) : null;
+                })()}
+                <select
+                  id="select-assigned-tech"
+                  value={assignedTechId}
+                  onChange={(e) => setAssignedTechId(e.target.value)}
+                  className="w-full p-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 focus:outline-none focus:border-[#00FFB4]"
+                >
+                  {(technicians && technicians.length > 0 ? technicians : ACTIVE_TECHNICIANS).map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.trade_specialty})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-slate-300 font-mono text-[11px]">Assigned Vendor (Optional)</label>
+              <select
+                id="select-assigned-vendor"
+                value={assignedVendorId}
+                onChange={(e) => setAssignedVendorId(e.target.value)}
+                className="w-full p-2 rounded-lg bg-slate-950 border border-slate-700 text-slate-200 focus:outline-none focus:border-[#00FFB4]"
+              >
+                <option value="">-- No Vendor Assigned Yet --</option>
+                {(vendors && vendors.length > 0 ? vendors : ACTIVE_VENDORS).map(v => (
+                  <option key={v.id} value={v.id}>
+                    {v.name} ({v.trade_category})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
+
+          {assignedVendorId && (
+            <div className="space-y-1">
+              <label className="block text-slate-300 font-mono text-[11px]">Vendor Assigned Task / Scope</label>
+              <input
+                type="text"
+                value={vendorTaskNote}
+                onChange={(e) => setVendorTaskNote(e.target.value)}
+                placeholder="e.g. Full apartment paint, LVP flooring install, Deep clean..."
+                className="w-full p-2 rounded-lg bg-slate-950 border border-slate-700 text-white placeholder:text-slate-600 focus:outline-none focus:border-[#00FFB4]"
+              />
+            </div>
+          )}
 
           {/* Initial Notes */}
           <div className="space-y-1">

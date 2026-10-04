@@ -20,14 +20,18 @@ import {
   LayoutGrid,
   Columns,
   Eye,
-  EyeOff
+  EyeOff,
+  Truck,
+  Plus
 } from 'lucide-react';
 import { 
   Unit, 
+  UnitVendorAssignment,
   TurnoverStage, 
   Checklist, 
   WorkOrder, 
   TechnicianUser,
+  Vendor,
   TRADE_CATEGORIES,
   FLOOR_PLAN_GROUPS
 } from '../types';
@@ -40,7 +44,11 @@ interface UnitPipelineProps {
   workOrders: WorkOrder[];
   currentUser: TechnicianUser;
   technicians?: TechnicianUser[];
+  vendors?: Vendor[];
   onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
+  onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string) => Promise<void>;
+  onRemoveVendorFromUnit?: (unitId: string, vendorId: string, assignedAt?: number) => Promise<void>;
+  onOpenManageVendors?: () => void;
   onSelectUnit: (unitId: string) => void;
   onOpenChecklist: (unitId: string, tradeCategory?: any) => void;
   onOpenDashboard: (unitId: string) => void;
@@ -82,7 +90,11 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   workOrders,
   currentUser,
   technicians = [],
+  vendors = [],
   onReassignTechnician,
+  onAssignVendorToUnit,
+  onRemoveVendorFromUnit,
+  onOpenManageVendors,
   onSelectUnit,
   onOpenChecklist,
   onOpenDashboard,
@@ -98,6 +110,12 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   const [deletePin, setDeletePin] = useState('');
   const [deletePinError, setDeletePinError] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+
+  // Inline vendor assignment state per apartment card
+  const [addingVendorUnitId, setAddingVendorUnitId] = useState<string | null>(null);
+  const [selectedVendorIdForUnit, setSelectedVendorIdForUnit] = useState<string>('');
+  const [customVendorNameForUnit, setCustomVendorNameForUnit] = useState<string>('');
+  const [vendorTaskForUnit, setVendorTaskForUnit] = useState<string>('');
 
   const isSupervisor = currentUser.role === 'Maintenance Supervisor';
 
@@ -218,32 +236,221 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
             <p className="text-[11px] text-slate-400 truncate mt-0.5">
               {unit.building} • Fl {unit.floor}
             </p>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="text-[10px] text-cyan-400 font-mono shrink-0">Tech:</span>
-              {technicians.length > 0 && onReassignTechnician ? (
-                <select
-                  id={`select-unit-tech-${unit.unit_number}`}
-                  value={unit.assigned_technician_id || ''}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    onReassignTechnician(unit.id, e.target.value);
-                  }}
+
+            {/* Maintenance Technician Photo + Selector */}
+            {(() => {
+              const assignedTechObj =
+                technicians.find(t => t.id === unit.assigned_technician_id) ||
+                technicians.find(t => t.name === unit.assigned_tech) ||
+                technicians[0];
+
+              return (
+                <div className="flex items-center gap-2 mt-2 bg-slate-950/70 p-1.5 rounded-lg border border-slate-800/90">
+                  {assignedTechObj?.avatar ? (
+                    <img
+                      src={assignedTechObj.avatar}
+                      alt={assignedTechObj.name}
+                      className="w-7 h-7 rounded-full object-cover border border-[#00FFB4]/50 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-slate-800 border border-[#00FFB4]/40 flex items-center justify-center text-[10px] font-mono font-bold text-[#00FFB4] shrink-0">
+                      {(unit.assigned_tech || 'T').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[9px] text-cyan-400 font-mono leading-tight">Maintenance Tech</div>
+                    {technicians.length > 0 && onReassignTechnician ? (
+                      <select
+                        id={`select-unit-tech-${unit.unit_number}`}
+                        value={unit.assigned_technician_id || ''}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          onReassignTechnician(unit.id, e.target.value);
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Change assigned Maintenance Technician"
+                        className="w-full bg-transparent text-slate-100 text-[11px] font-mono font-semibold focus:outline-none cursor-pointer truncate"
+                      >
+                        {technicians.map((t) => (
+                          <option key={t.id} value={t.id} className="bg-slate-900 text-white">
+                            {t.name}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div className="text-[11px] text-slate-100 font-mono font-semibold truncate">
+                        {assignedTechObj?.name || unit.assigned_tech || 'Unassigned'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Assigned Vendors & Tasks for this Apartment Unit */}
+            {(() => {
+              const unitVendors: UnitVendorAssignment[] = Array.isArray(unit.assigned_vendors) && unit.assigned_vendors.length > 0
+                ? unit.assigned_vendors
+                : unit.assigned_vendor
+                ? [
+                    {
+                      vendor_id: unit.assigned_vendor_id || 'vendor-legacy',
+                      vendor_name: unit.assigned_vendor,
+                      trade_category: 'Assigned Contractor',
+                      assigned_at: unit.last_updated
+                    }
+                  ]
+                : [];
+
+              const isAddingThisUnit = addingVendorUnitId === unit.id;
+
+              return (
+                <div
+                  className="mt-2 p-2 rounded-lg bg-slate-950/70 border border-slate-800/90 space-y-1.5"
                   onClick={(e) => e.stopPropagation()}
-                  title="Change assigned Maintenance Technician"
-                  className="bg-slate-950 border border-slate-700/80 hover:border-[#00FFB4] text-slate-200 text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded focus:outline-none focus:border-[#00FFB4] cursor-pointer max-w-[165px] truncate transition-colors"
                 >
-                  {technicians.map((t) => (
-                    <option key={t.id} value={t.id} className="bg-slate-900 text-white">
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <span className="text-[10px] text-slate-200 font-mono font-semibold truncate">
-                  {unit.assigned_tech || 'Unassigned'}
-                </span>
-              )}
-            </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-mono text-amber-300 flex items-center gap-1 font-semibold">
+                      <Truck className="w-3 h-3 text-amber-400 shrink-0" />
+                      <span>Assigned Vendors ({unitVendors.length})</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        soundManager.playClick();
+                        if (isAddingThisUnit) {
+                          setAddingVendorUnitId(null);
+                        } else {
+                          setAddingVendorUnitId(unit.id);
+                          setSelectedVendorIdForUnit(vendors[0]?.id || 'CUSTOM');
+                          setCustomVendorNameForUnit('');
+                          setVendorTaskForUnit('');
+                        }
+                      }}
+                      className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-[#00FFB4]/15 hover:bg-[#00FFB4]/25 text-[#00FFB4] border border-[#00FFB4]/40 text-[10px] font-mono font-semibold transition-colors"
+                      title="Assign a Vendor & Task to this Apartment"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{isAddingThisUnit ? 'Cancel' : 'Add Vendor'}</span>
+                    </button>
+                  </div>
+
+                  {unitVendors.length === 0 ? (
+                    <div className="text-[10px] font-mono text-slate-500">
+                      No vendor assigned yet
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {unitVendors.map((uv, idx) => (
+                        <div
+                          key={`${uv.vendor_id}-${uv.assigned_at || idx}`}
+                          className="flex items-start justify-between gap-1.5 bg-slate-900/90 px-2 py-1 rounded border border-slate-800 text-[10px] font-mono"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="text-slate-100 font-semibold truncate">
+                              {uv.vendor_name}
+                            </div>
+                            <div className="text-slate-400 text-[9px] truncate">
+                              {uv.trade_category}
+                              {uv.task_note ? ` · ${uv.task_note}` : ''}
+                            </div>
+                          </div>
+                          {onRemoveVendorFromUnit && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                soundManager.playClick();
+                                onRemoveVendorFromUnit(unit.id, uv.vendor_id, uv.assigned_at);
+                              }}
+                              title="Remove vendor from unit"
+                              className="text-slate-500 hover:text-[#FF3366] px-1 shrink-0"
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {isAddingThisUnit && (
+                    <div className="pt-1.5 border-t border-slate-800 space-y-1.5">
+                      <select
+                        value={selectedVendorIdForUnit}
+                        onChange={(e) => setSelectedVendorIdForUnit(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 text-slate-100 text-[10px] font-mono px-2 py-1 rounded focus:outline-none focus:border-[#00FFB4]"
+                      >
+                        {vendors.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name} ({v.trade_category})
+                          </option>
+                        ))}
+                        <option value="CUSTOM">+ Write New Vendor Name...</option>
+                      </select>
+
+                      {selectedVendorIdForUnit === 'CUSTOM' && (
+                        <input
+                          type="text"
+                          value={customVendorNameForUnit}
+                          onChange={(e) => setCustomVendorNameForUnit(e.target.value)}
+                          placeholder="Vendor or company name..."
+                          className="w-full bg-slate-900 border border-[#00FFB4]/60 text-white text-[10px] font-mono px-2 py-1 rounded focus:outline-none focus:border-[#00FFB4]"
+                        />
+                      )}
+
+                      <input
+                        type="text"
+                        value={vendorTaskForUnit}
+                        onChange={(e) => setVendorTaskForUnit(e.target.value)}
+                        placeholder="Assigned task (e.g. Paint, Carpet, Clean)..."
+                        className="w-full bg-slate-900 border border-slate-700 text-white text-[10px] font-mono px-2 py-1 rounded focus:outline-none focus:border-[#00FFB4]"
+                      />
+
+                      <div className="flex items-center justify-between gap-1.5">
+                        {onOpenManageVendors && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundManager.playClick();
+                              onOpenManageVendors();
+                            }}
+                            className="text-[9px] font-mono text-cyan-400 hover:underline"
+                          >
+                            Manage Directory
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={
+                            !selectedVendorIdForUnit ||
+                            (selectedVendorIdForUnit === 'CUSTOM' && !customVendorNameForUnit.trim())
+                          }
+                          onClick={async () => {
+                            if (!onAssignVendorToUnit) return;
+                            const targetVendor =
+                              selectedVendorIdForUnit === 'CUSTOM'
+                                ? `custom:${customVendorNameForUnit.trim()}`
+                                : selectedVendorIdForUnit;
+                            if (!targetVendor) return;
+                            soundManager.playClick();
+                            await onAssignVendorToUnit(unit.id, targetVendor, vendorTaskForUnit);
+                            setAddingVendorUnitId(null);
+                            setCustomVendorNameForUnit('');
+                            setVendorTaskForUnit('');
+                          }}
+                          className="ml-auto px-2.5 py-1 rounded bg-[#00FFB4] text-black font-mono font-bold text-[10px] hover:brightness-110 disabled:opacity-40"
+                        >
+                          Save Vendor
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {unit.notes && (
               <p className="text-[10px] text-slate-400 italic line-clamp-1 mt-1 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800/80">
                 "{unit.notes}"

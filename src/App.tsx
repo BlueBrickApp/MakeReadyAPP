@@ -18,6 +18,7 @@ import { NewUnitModal } from './components/NewUnitModal';
 import { ShareTeamModal } from './components/ShareTeamModal';
 import { ManageTeamModal } from './components/ManageTeamModal';
 import { ManageVendorsModal } from './components/ManageVendorsModal';
+import { SourceCodeExportModal } from './components/SourceCodeExportModal';
 
 import { 
   Unit, 
@@ -70,6 +71,7 @@ export default function App() {
   const [isManageTeamModalOpen, setIsManageTeamModalOpen] = useState(false);
   const [initialEditingTechId, setInitialEditingTechId] = useState<string | null>(null);
   const [isManageVendorsModalOpen, setIsManageVendorsModalOpen] = useState(false);
+  const [isExportCodeModalOpen, setIsExportCodeModalOpen] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>(ACTIVE_VENDORS);
   const [conflictData, setConflictData] = useState<{
     originalTask: Task;
@@ -171,6 +173,18 @@ export default function App() {
   const handleUpdateUnitTechnician = async (unitId: string, technicianId: string) => {
     soundManager.playClick();
     await offlineDB.updateUnitTechnician(unitId, technicianId, currentUser);
+    await loadData();
+  };
+
+  // Handler: Assign Vendor & Task to a Unit
+  const handleAssignVendorToUnit = async (unitId: string, vendorId: string, taskNote: string) => {
+    await offlineDB.assignVendorToUnit(unitId, vendorId, taskNote, currentUser);
+    await loadData();
+  };
+
+  // Handler: Remove Vendor from a Unit
+  const handleRemoveVendorFromUnit = async (unitId: string, vendorId: string, assignedAt?: number) => {
+    await offlineDB.removeVendorFromUnit(unitId, vendorId, assignedAt, currentUser);
     await loadData();
   };
 
@@ -324,6 +338,7 @@ export default function App() {
           setIsManageTeamModalOpen(true);
         }}
         onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
+        onOpenExportCode={() => setIsExportCodeModalOpen(true)}
         notifications={notifications}
         syncQueue={syncQueue}
         onSyncCompleted={loadData}
@@ -354,7 +369,11 @@ export default function App() {
                 workOrders={workOrders}
                 currentUser={currentUser}
                 technicians={technicians}
+                vendors={vendors}
                 onReassignTechnician={handleUpdateUnitTechnician}
+                onAssignVendorToUnit={handleAssignVendorToUnit}
+                onRemoveVendorFromUnit={handleRemoveVendorFromUnit}
+                onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
                 onSelectUnit={(id) => {
                   setSelectedUnitId(id);
                   setCurrentTab('turnover-dashboard');
@@ -377,7 +396,11 @@ export default function App() {
                 fieldLogs={fieldLogs}
                 currentUser={currentUser}
                 technicians={technicians}
+                vendors={vendors}
                 onReassignTechnician={handleUpdateUnitTechnician}
+                onAssignVendorToUnit={handleAssignVendorToUnit}
+                onRemoveVendorFromUnit={handleRemoveVendorFromUnit}
+                onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
                 onOpenChecklistForTrade={handleOpenChecklist}
                 onOpenDispatcherForUnit={(uId, trade) => handleOpenDispatcherForUnit(uId, trade)}
                 onOpenSignOff={handleOpenSignOff}
@@ -480,6 +503,7 @@ export default function App() {
         onClose={() => setIsNewUnitModalOpen(false)}
         currentUser={currentUser}
         technicians={technicians}
+        vendors={vendors}
         onSwitchToSupervisor={handleSwitchToSupervisor}
         onCreateUnit={handleCreateUnit}
       />
@@ -512,12 +536,17 @@ export default function App() {
         onDeleteVendor={handleDeleteVendor}
       />
 
+      <SourceCodeExportModal
+        isOpen={isExportCodeModalOpen}
+        onClose={() => setIsExportCodeModalOpen(false)}
+      />
+
       {/* Footer System Status Bar */}
       <footer className="bg-[#0A0E17] border-t border-slate-800/80 px-4 py-2.5 sm:px-6 text-slate-500 font-mono text-[11px]">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#00FFB4] shadow-[0_0_6px_#00FFB4]" />
-            <span>UNIT TURNOVER TRACKER • LOCAL DB ENCRYPTION READY</span>
+            <span>SOUTHERLY MAKE READY'S • LOCAL DB ENCRYPTION READY</span>
           </div>
           <div className="flex items-center gap-4 text-slate-400 flex-wrap justify-center">
             <span className="text-[#00FFB4] font-semibold">Maintenance Supervisor: Gerry Malovini</span>

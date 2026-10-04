@@ -12,6 +12,8 @@
         "building": { "type": "string" },
         "floor": { "type": "number" },
         "assigned_technician_id": { "type": "string" },
+        "assigned_vendor_id": { "type": "string" },
+        "assigned_vendor": { "type": "string" },
         "move_out_date": { "type": "string" },
         "target_ready_date": { "type": "string" },
         "last_updated": { "type": "number" },
