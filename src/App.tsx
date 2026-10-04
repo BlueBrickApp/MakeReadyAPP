@@ -30,6 +30,8 @@ import {
   SyncQueueItem, 
   TechnicianUser, 
   Vendor,
+  ScheduleEventStatus,
+  ScheduleTradeCode,
   TradeCategory, 
   TurnoverStage 
 } from './types';
@@ -185,6 +187,38 @@ export default function App() {
   // Handler: Remove Vendor from a Unit
   const handleRemoveVendorFromUnit = async (unitId: string, vendorId: string, assignedAt?: number) => {
     await offlineDB.removeVendorFromUnit(unitId, vendorId, assignedAt, currentUser);
+    await loadData();
+  };
+
+  // Handler: Add Make-Ready Calendar Schedule Event to a Unit
+  const handleAddScheduleEvent = async (
+    unitId: string,
+    payload: {
+      date: string;
+      trade_codes?: ScheduleTradeCode[];
+      activity: string;
+      vendorIdOrCustom?: string;
+      status: ScheduleEventStatus;
+      notes?: string;
+    }
+  ) => {
+    await offlineDB.addUnitScheduleEvent(unitId, payload, currentUser);
+    await loadData();
+  };
+
+  // Handler: Update Make-Ready Calendar Schedule Event Status
+  const handleUpdateScheduleEventStatus = async (
+    unitId: string,
+    eventId: string,
+    status: ScheduleEventStatus
+  ) => {
+    await offlineDB.updateUnitScheduleEventStatus(unitId, eventId, status, currentUser);
+    await loadData();
+  };
+
+  // Handler: Remove Make-Ready Calendar Schedule Event
+  const handleRemoveScheduleEvent = async (unitId: string, eventId: string) => {
+    await offlineDB.removeUnitScheduleEvent(unitId, eventId, currentUser);
     await loadData();
   };
 
@@ -373,6 +407,9 @@ export default function App() {
                 onReassignTechnician={handleUpdateUnitTechnician}
                 onAssignVendorToUnit={handleAssignVendorToUnit}
                 onRemoveVendorFromUnit={handleRemoveVendorFromUnit}
+                onAddScheduleEvent={handleAddScheduleEvent}
+                onUpdateScheduleEventStatus={handleUpdateScheduleEventStatus}
+                onRemoveScheduleEvent={handleRemoveScheduleEvent}
                 onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
                 onSelectUnit={(id) => {
                   setSelectedUnitId(id);
@@ -400,6 +437,9 @@ export default function App() {
                 onReassignTechnician={handleUpdateUnitTechnician}
                 onAssignVendorToUnit={handleAssignVendorToUnit}
                 onRemoveVendorFromUnit={handleRemoveVendorFromUnit}
+                onAddScheduleEvent={handleAddScheduleEvent}
+                onUpdateScheduleEventStatus={handleUpdateScheduleEventStatus}
+                onRemoveScheduleEvent={handleRemoveScheduleEvent}
                 onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
                 onOpenChecklistForTrade={handleOpenChecklist}
                 onOpenDispatcherForUnit={(uId, trade) => handleOpenDispatcherForUnit(uId, trade)}

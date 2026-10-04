@@ -27,6 +27,8 @@ import {
 import { 
   Unit, 
   UnitVendorAssignment,
+  ScheduleEventStatus,
+  ScheduleTradeCode,
   TurnoverStage, 
   Checklist, 
   WorkOrder, 
@@ -37,6 +39,7 @@ import {
 } from '../types';
 import { soundManager } from '../services/audio';
 import { offlineDB } from '../services/db';
+import { UnitMakeReadyCalendar } from './UnitMakeReadyCalendar';
 
 interface UnitPipelineProps {
   units: Unit[];
@@ -48,6 +51,23 @@ interface UnitPipelineProps {
   onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
   onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string) => Promise<void>;
   onRemoveVendorFromUnit?: (unitId: string, vendorId: string, assignedAt?: number) => Promise<void>;
+  onAddScheduleEvent?: (
+    unitId: string,
+    payload: {
+      date: string;
+      trade_codes?: ScheduleTradeCode[];
+      activity: string;
+      vendorIdOrCustom?: string;
+      status: ScheduleEventStatus;
+      notes?: string;
+    }
+  ) => Promise<void>;
+  onUpdateScheduleEventStatus?: (
+    unitId: string,
+    eventId: string,
+    status: ScheduleEventStatus
+  ) => Promise<void>;
+  onRemoveScheduleEvent?: (unitId: string, eventId: string) => Promise<void>;
   onOpenManageVendors?: () => void;
   onSelectUnit: (unitId: string) => void;
   onOpenChecklist: (unitId: string, tradeCategory?: any) => void;
@@ -94,6 +114,9 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   onReassignTechnician,
   onAssignVendorToUnit,
   onRemoveVendorFromUnit,
+  onAddScheduleEvent,
+  onUpdateScheduleEventStatus,
+  onRemoveScheduleEvent,
   onOpenManageVendors,
   onSelectUnit,
   onOpenChecklist,
@@ -450,6 +473,15 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                 </div>
               );
             })()}
+
+            {/* Mini Make-Ready Calendar & Vendor Schedule Dropdown */}
+            <UnitMakeReadyCalendar
+              unit={unit}
+              vendors={vendors}
+              onAddScheduleEvent={onAddScheduleEvent}
+              onUpdateScheduleEventStatus={onUpdateScheduleEventStatus}
+              onRemoveScheduleEvent={onRemoveScheduleEvent}
+            />
 
             {unit.notes && (
               <p className="text-[10px] text-slate-400 italic line-clamp-1 mt-1 bg-slate-950/80 px-1.5 py-0.5 rounded border border-slate-800/80">

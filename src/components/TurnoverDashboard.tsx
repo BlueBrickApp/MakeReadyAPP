@@ -28,6 +28,8 @@ import {
 import { 
   Unit, 
   UnitVendorAssignment,
+  ScheduleEventStatus,
+  ScheduleTradeCode,
   Checklist, 
   WorkOrder, 
   FieldLogEntry,
@@ -37,6 +39,7 @@ import {
   Vendor
 } from '../types';
 import { soundManager } from '../services/audio';
+import { UnitMakeReadyCalendar } from './UnitMakeReadyCalendar';
 
 interface TurnoverDashboardProps {
   units: Unit[];
@@ -51,6 +54,23 @@ interface TurnoverDashboardProps {
   onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
   onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string) => Promise<void>;
   onRemoveVendorFromUnit?: (unitId: string, vendorId: string, assignedAt?: number) => Promise<void>;
+  onAddScheduleEvent?: (
+    unitId: string,
+    payload: {
+      date: string;
+      trade_codes?: ScheduleTradeCode[];
+      activity: string;
+      vendorIdOrCustom?: string;
+      status: ScheduleEventStatus;
+      notes?: string;
+    }
+  ) => Promise<void>;
+  onUpdateScheduleEventStatus?: (
+    unitId: string,
+    eventId: string,
+    status: ScheduleEventStatus
+  ) => Promise<void>;
+  onRemoveScheduleEvent?: (unitId: string, eventId: string) => Promise<void>;
   onOpenManageVendors?: () => void;
   onOpenChecklistForTrade: (unitId: string, trade: TradeCategory) => void;
   onOpenDispatcherForUnit: (unitId: string, trade: TradeCategory) => void;
@@ -265,6 +285,9 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
   onReassignTechnician,
   onAssignVendorToUnit,
   onRemoveVendorFromUnit,
+  onAddScheduleEvent,
+  onUpdateScheduleEventStatus,
+  onRemoveScheduleEvent,
   onOpenManageVendors,
   onOpenChecklistForTrade,
   onOpenDispatcherForUnit,
@@ -563,6 +586,15 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                   </div>
                 );
               })()}
+
+              {/* Make-Ready Calendar & Vendor Schedule */}
+              <UnitMakeReadyCalendar
+                unit={currentUnit}
+                vendors={vendors}
+                onAddScheduleEvent={onAddScheduleEvent}
+                onUpdateScheduleEventStatus={onUpdateScheduleEventStatus}
+                onRemoveScheduleEvent={onRemoveScheduleEvent}
+              />
 
               {currentUnit?.notes && (
                 <p className="text-[11px] text-slate-300 italic bg-slate-900 px-2 py-1 rounded border border-slate-800">

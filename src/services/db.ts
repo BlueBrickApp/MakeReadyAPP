@@ -6,6 +6,9 @@
 import { 
   Unit, 
   UnitVendorAssignment,
+  UnitScheduleEvent,
+  ScheduleEventStatus,
+  ScheduleTradeCode,
   Checklist, 
   Task, 
   WorkOrder, 
@@ -1493,6 +1496,179 @@ class OfflineDB {
     await this.putInStore('field_logs', logEntry);
     this.pushToFirestore('field_logs', logEntry.id, logEntry);
 
+    this.notifyListeners();
+    return updatedUnit;
+  }
+
+  // Add a Make-Ready Schedule / Calendar Event to a Unit (and optionally link vendor)
+  public async addUnitScheduleEvent(
+    unitId: string,
+    payload: {
+      date: string;
+      trade_codes?: ScheduleTradeCode[];
+      activity: string;
+      vendorIdOrCustom?: string;
+      status: ScheduleEventStatus;
+      notes?: string;
+    },
+    author: TechnicianUser
+  ): Promise<Unit> {
+    const unit = await this.getUnitById(unitId);
+    if (!unit) throw new Error('Unit not found');
+
+    const allVendors = await this.getVendors();
+    let resolvedVendorId = '';
+    let resolvedVendorName = '';
+
+    if (payload.vendorIdOrCustom && payload.vendorIdOrCustom !== 'IN_HOUSE') {
+      const matched = allVendors.find(v => v.id === payload.vendorIdOrCustom);
+      if (matched) {
+        resolvedVendorId = matched.id;
+        resolvedVendorName = matched.name;
+      } else {
+        const customName = payload.vendorIdOrCustom.replace(/^custom:/i, '').trim();
+        if (customName) {
+          const existingByName = allVendors.find(v => v.name.toLowerCase() === customName.toLowerCase());
+          if (existingByName) {
+            resolvedVendorId = existingByName.id;
+            resolvedVendorName = existingByName.name;
+          } else {
+            const newVendor: Vendor = {
+              id: `ven-${Date.now()}`,
+              name: customName,
+              trade_category: payload.activity.trim() || 'General Make-Ready',
+              contact_person: 'Field Dispatch',
+              phone: '',
+              status: 'Active'
+            };
+            await this.addVendor(newVendor);
+            resolvedVendorId = newVendor.id;
+            resolvedVendorName = newVendor.name;
+          }
+        }
+      }
+    } else if (payload.vendorIdOrCustom === 'IN_HOUSE') {
+      resolvedVendorId = 'IN_HOUSE';
+      resolvedVendorName = `In-House (${unit.assigned_tech || author.name})`;
+    }
+
+    const newEvent: UnitScheduleEvent = {
+      id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      date: payload.date,
+      trade_codes: payload.trade_codes && payload.trade_codes.length > 0 ? payload.trade_codes : undefined,
+      activity: payload.activity.trim(),
+      vendor_id: resolvedVendorId || undefined,
+      vendor_name: resolvedVendorName || undefined,
+      status: payload.status,
+      notes: payload.notes?.trim() || undefined,
+      created_at: Date.now()
+    };
+
+    const existingEvents: UnitScheduleEvent[] = Array.isArray(unit.schedule_events)
+      ? [...unit.schedule_events]
+      : [];
+    const updatedEvents = [...existingEvents, newEvent].sort((a, b) => a.date.localeCompare(b.date));
+
+    // Also link vendor to unit.assigned_vendors if external vendor was selected and not already listed for this task
+    const existingVendors: UnitVendorAssignment[] = Array.isArray(unit.assigned_vendors)
+      ? [...unit.assigned_vendors]
+      : [];
+    if (resolvedVendorId && resolvedVendorId !== 'IN_HOUSE') {
+      const alreadyAssigned = existingVendors.some(
+        v => v.vendor_id === resolvedVendorId && (v.task_note || '').toLowerCase() === payload.activity.trim().toLowerCase()
+      );
+      if (!alreadyAssigned) {
+        existingVendors.push({
+          vendor_id: resolvedVendorId,
+          vendor_name: resolvedVendorName,
+          trade_category: payload.activity.trim(),
+          task_note: `${payload.date}${payload.notes?.trim() ? ` · ${payload.notes.trim()}` : ''}`,
+          assigned_at: Date.now()
+        });
+      }
+    }
+
+    const updatedUnit: Unit = {
+      ...unit,
+      schedule_events: updatedEvents,
+      assigned_vendors: existingVendors,
+      assigned_vendor_id: resolvedVendorId && resolvedVendorId !== 'IN_HOUSE' ? resolvedVendorId : unit.assigned_vendor_id,
+      assigned_vendor: resolvedVendorName && resolvedVendorId !== 'IN_HOUSE' ? resolvedVendorName : unit.assigned_vendor,
+      last_updated: Date.now()
+    };
+
+    await this.putInStore('units', updatedUnit);
+    await this.pushToFirestore('units', updatedUnit.id, updatedUnit);
+
+    const logEntry: FieldLogEntry = {
+      id: `log-${Date.now()}`,
+      unit_id: unit.id,
+      unit_number: unit.unit_number,
+      timestamp: Date.now(),
+      author_name: author.name,
+      author_role: author.role,
+      action_type: 'note_added',
+      message: `Calendar Schedule [${payload.date} • ${payload.status}]: "${payload.activity}"${resolvedVendorName ? ` — Vendor: ${resolvedVendorName}` : ''}.`,
+      synced: this.isConnected
+    };
+    await this.putInStore('field_logs', logEntry);
+    this.pushToFirestore('field_logs', logEntry.id, logEntry);
+
+    this.notifyListeners();
+    return updatedUnit;
+  }
+
+  // Update status of a Make-Ready Schedule Event
+  public async updateUnitScheduleEventStatus(
+    unitId: string,
+    eventId: string,
+    status: ScheduleEventStatus,
+    author: TechnicianUser
+  ): Promise<Unit> {
+    const unit = await this.getUnitById(unitId);
+    if (!unit) throw new Error('Unit not found');
+
+    const existingEvents: UnitScheduleEvent[] = Array.isArray(unit.schedule_events)
+      ? [...unit.schedule_events]
+      : [];
+    const updatedEvents = existingEvents.map(ev =>
+      ev.id === eventId ? { ...ev, status } : ev
+    );
+
+    const updatedUnit: Unit = {
+      ...unit,
+      schedule_events: updatedEvents,
+      last_updated: Date.now()
+    };
+
+    await this.putInStore('units', updatedUnit);
+    await this.pushToFirestore('units', updatedUnit.id, updatedUnit);
+    this.notifyListeners();
+    return updatedUnit;
+  }
+
+  // Remove a Make-Ready Schedule Event from a Unit
+  public async removeUnitScheduleEvent(
+    unitId: string,
+    eventId: string,
+    author: TechnicianUser
+  ): Promise<Unit> {
+    const unit = await this.getUnitById(unitId);
+    if (!unit) throw new Error('Unit not found');
+
+    const existingEvents: UnitScheduleEvent[] = Array.isArray(unit.schedule_events)
+      ? [...unit.schedule_events]
+      : [];
+    const updatedEvents = existingEvents.filter(ev => ev.id !== eventId);
+
+    const updatedUnit: Unit = {
+      ...unit,
+      schedule_events: updatedEvents,
+      last_updated: Date.now()
+    };
+
+    await this.putInStore('units', updatedUnit);
+    await this.pushToFirestore('units', updatedUnit.id, updatedUnit);
     this.notifyListeners();
     return updatedUnit;
   }

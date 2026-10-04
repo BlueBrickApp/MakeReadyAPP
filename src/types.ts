@@ -93,6 +93,51 @@ export interface UnitVendorAssignment {
   assigned_at: number;
 }
 
+export type ScheduleEventStatus = 'In Progress' | 'Scheduled' | 'Completed';
+
+export type ScheduleTradeCode = 'PL' | 'EL' | 'HV' | 'PA' | 'FL' | 'HK';
+
+export const SCHEDULE_TRADE_CODES: {
+  code: ScheduleTradeCode;
+  label: string;
+  defaultActivity: string;
+  color: string;
+}[] = [
+  { code: 'PL', label: 'Plumbing', defaultActivity: 'Plumbing Make-Ready', color: '#00E5FF' },
+  { code: 'EL', label: 'Electrical', defaultActivity: 'Electrical & Fixtures', color: '#FFB800' },
+  { code: 'HV', label: 'HVAC', defaultActivity: 'HVAC Service & Filter', color: '#FF6B35' },
+  { code: 'PA', label: 'Painting', defaultActivity: 'Full Paint / Touch-Up Paint', color: '#A855F7' },
+  { code: 'FL', label: 'Flooring', defaultActivity: 'Flooring / Carpet Installation', color: '#38BDF8' },
+  { code: 'HK', label: 'Housekeeping', defaultActivity: 'Deep Make-Ready Cleaning (HK)', color: '#00FFB4' },
+];
+
+export interface UnitScheduleEvent {
+  id: string;
+  date: string; // YYYY-MM-DD
+  trade_codes?: ScheduleTradeCode[];
+  activity: string;
+  vendor_id?: string;
+  vendor_name?: string;
+  status: ScheduleEventStatus;
+  notes?: string;
+  created_at: number;
+}
+
+export const MAKE_READY_ACTIVITY_PRESETS = [
+  'Trash Out & Initial Walk',
+  'Drywall & Patching',
+  'Full Paint / Touch-Up Paint',
+  'Flooring / Carpet Installation',
+  'Carpet / Floor Steam Clean',
+  'Plumbing Make-Ready',
+  'Electrical & Fixtures',
+  'HVAC Service & Filter',
+  'Appliance Check / Repair',
+  'Countertop / Tub Resurfacing',
+  'Deep Make-Ready Cleaning',
+  'Final Supervisor Inspection'
+] as const;
+
 export interface Unit {
   id: string;
   unit_number: string;
@@ -105,6 +150,7 @@ export interface Unit {
   assigned_vendor_id?: string;
   assigned_vendor?: string;
   assigned_vendors?: UnitVendorAssignment[];
+  schedule_events?: UnitScheduleEvent[];
   move_out_date: string;
   target_ready_date: string;
   last_updated: number;
