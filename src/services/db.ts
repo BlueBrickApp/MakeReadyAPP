@@ -1386,7 +1386,7 @@ class OfflineDB {
           id: `ven-${Date.now()}`,
           name: customName,
           trade_category: taskNote.trim() || 'General Make-Ready',
-          contact_name: 'Field Dispatch',
+          contact_person: 'Field Dispatch',
           phone: '',
           status: 'Active'
         };
