@@ -298,14 +298,15 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Save Full Code / Backup to Hard Drive Button */}
+          {/* Save Full Code / Backup to Hard Drive Button (Password Protected) */}
           {onOpenExportCode && (
             <button
               id="header-export-code-btn"
               onClick={() => { soundManager.playClick(); onOpenExportCode(); }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-slate-900 border border-[#00E5FF]/50 hover:border-[#00FFB4] text-[#00E5FF] hover:text-[#00FFB4] font-mono text-xs transition-all shadow-sm"
-              title="Download or Copy Complete Application Source Code & Database Backup to Hard Drive"
+              title="Supervisor Password Protected — Download Complete Source Code & Database Backup"
             >
+              <Lock className="w-3 h-3 text-amber-400" />
               <HardDrive className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">SAVE CODE</span>
             </button>
