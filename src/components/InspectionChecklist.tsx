@@ -26,6 +26,7 @@ import {
   Task, 
   TradeCategory, 
   TRADE_CATEGORIES, 
+  TRADE_DEEP_DIVE_LABELS,
   TechnicianUser 
 } from '../types';
 import { soundManager } from '../services/audio';
@@ -248,7 +249,7 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
           </div>
         )}
 
-        {/* 6 Trade Tabs Selector */}
+        {/* 5 Deep-Dive Trade Tabs Selector */}
         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-2 border-t border-slate-800">
           {TRADE_CATEGORIES.map((trade) => {
             const chk = unitChecklists.find(c => c.trade_category === trade);
@@ -259,7 +260,7 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
             return (
               <button
                 key={trade}
-                id={`trade-tab-${trade.toLowerCase()}`}
+                id={`trade-tab-${trade.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
                 onClick={() => {
                   soundManager.playClick();
                   onSelectTrade(trade);
@@ -270,7 +271,7 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
                     : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
                 }`}
               >
-                <span>{trade}</span>
+                <span>{TRADE_DEEP_DIVE_LABELS[trade] || trade}</span>
                 <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                   isSelected 
                     ? 'bg-black text-[#00FFB4]' 
@@ -291,7 +292,7 @@ export const InspectionChecklist: React.FC<InspectionChecklistProps> = ({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="font-['Chakra_Petch'] font-bold text-lg text-white">
-              {selectedTrade} Inspection Punch-List
+              {TRADE_DEEP_DIVE_LABELS[selectedTrade] || selectedTrade} — Make-Ready Checklist
             </h3>
             <span className="px-2 py-0.5 rounded text-xs font-mono font-semibold bg-slate-900 border border-slate-700 text-slate-300">
               Unit #{currentUnit?.unit_number}

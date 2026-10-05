@@ -8,18 +8,32 @@ export type TradeCategory =
   | 'Plumbing'
   | 'Electrical'
   | 'HVAC'
-  | 'Painting'
-  | 'Flooring'
-  | 'Cleaning';
+  | 'Appliances'
+  | 'General, Hardware & Turn';
 
 export const TRADE_CATEGORIES: TradeCategory[] = [
   'Plumbing',
   'Electrical',
   'HVAC',
-  'Painting',
-  'Flooring',
-  'Cleaning',
+  'Appliances',
+  'General, Hardware & Turn',
 ];
+
+export const TRADE_DEEP_DIVE_LABELS: Record<TradeCategory, string> = {
+  'Plumbing': '🚰 Plumbing (Deep Dive)',
+  'Electrical': '⚡ Electrical (Deep Dive)',
+  'HVAC': '❄️ HVAC (Deep Dive)',
+  'Appliances': '🍳 Appliances (Deep Dive)',
+  'General, Hardware & Turn': '🏠 General, Hardware & Turn (Deep Dive)',
+};
+
+export const TRADE_SHORT_CODES: Record<TradeCategory, string> = {
+  'Plumbing': 'PL',
+  'Electrical': 'EL',
+  'HVAC': 'HV',
+  'Appliances': 'AP',
+  'General, Hardware & Turn': 'GH',
+};
 
 export interface Task {
   id: string;

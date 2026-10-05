@@ -35,6 +35,7 @@ import {
   FieldLogEntry,
   TradeCategory, 
   TRADE_CATEGORIES,
+  TRADE_DEEP_DIVE_LABELS,
   TechnicianUser,
   Vendor
 } from '../types';
@@ -81,9 +82,8 @@ const TRADE_ICONS: Record<TradeCategory, React.ComponentType<{ className?: strin
   Plumbing: Wrench,
   Electrical: Zap,
   HVAC: Flame,
-  Painting: Paintbrush,
-  Flooring: Layers,
-  Cleaning: Sparkles
+  Appliances: Sparkles,
+  'General, Hardware & Turn': Layers
 };
 
 export interface VelocityPoint {
@@ -877,19 +877,19 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
         </div>
       </div>
 
-      {/* 6 Trade Categories Granular Cards Grid */}
+      {/* 5 Deep-Dive Trade Categories Granular Cards Grid */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h3 className="font-['Chakra_Petch'] font-bold text-base text-white tracking-wide">
-            Trade Categories Breakdown (6 Trades)
+            Make-Ready Deep-Dive Checklists (5 Categories)
           </h3>
-          <span className="text-xs font-mono text-slate-400">Click any card to open dynamic punch-list</span>
+          <span className="text-xs font-mono text-slate-400">Click any card to open component-by-component checklist</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {TRADE_CATEGORIES.map((trade) => {
             const checklist = unitChecklists.find(c => c.trade_category === trade);
-            const Icon = TRADE_ICONS[trade];
+            const Icon = TRADE_ICONS[trade] || Wrench;
             const pct = checklist ? checklist.completion_percentage : 0;
             const is100 = pct === 100;
             const taskList = checklist?.task_list || [];
@@ -897,7 +897,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
             const totalTradeTasks = taskList.length;
             const tradeWorkOrders = unitWorkOrders.filter(w => w.trade_category === trade && w.status !== 'Resolved');
             const tradeVelocityPts = computeTradeVelocity7Days(checklist, currentUnit.id, trade);
-            const tradeGradId = `trade-spark-${currentUnit.id.replace(/[^a-zA-Z0-9_-]/g, '')}-${trade.toLowerCase()}`;
+            const tradeGradId = `trade-spark-${currentUnit.id.replace(/[^a-zA-Z0-9_-]/g, '')}-${trade.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
             const strokeColor = is100 ? '#00FFB4' : pct > 0 ? '#00E5FF' : '#475569';
 
             return (
@@ -924,7 +924,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                       </div>
                       <div>
                         <h4 className="font-['Chakra_Petch'] font-bold text-base text-white">
-                          {trade}
+                          {TRADE_DEEP_DIVE_LABELS[trade] || trade}
                         </h4>
                         <span className="text-[11px] text-slate-400 font-mono tabular-nums">
                           {doneCount} of {totalTradeTasks} verified

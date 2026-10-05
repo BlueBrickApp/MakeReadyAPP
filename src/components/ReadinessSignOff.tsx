@@ -22,6 +22,7 @@ import {
   WorkOrder, 
   TechnicianUser, 
   TRADE_CATEGORIES, 
+  TRADE_DEEP_DIVE_LABELS,
   TradeCategory 
 } from '../types';
 import { soundManager } from '../services/audio';
@@ -309,15 +310,15 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
         </div>
       )}
 
-      {/* Trade Verification Matrix (6 Trades) */}
+      {/* Trade Verification Matrix (5 Deep-Dive Categories) */}
       <div className="bg-[#0D131F] border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">
         <div className="flex items-center justify-between pb-2 border-b border-slate-800">
           <div>
             <h3 className="font-['Chakra_Petch'] font-bold text-base text-white">
-              1. Trade Punch-List Completion Verification
+              1. Deep-Dive Make-Ready Checklist Verification
             </h3>
             <p className="text-xs text-slate-400 font-mono">
-              All 6 trade workflows must reach 100% before unlocking final certification
+              All 5 Deep-Dive checklist categories must reach 100% before unlocking final certification
             </p>
           </div>
 
@@ -326,11 +327,11 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
               ? 'bg-[#00FFB4]/20 text-[#00FFB4] border border-[#00FFB4]/50'
               : 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
           }`}>
-            {allTrades100 ? 'ALL 6 TRADES VERIFIED (100%)' : 'TRADES INCOMPLETE'}
+            {allTrades100 ? 'ALL 5 CHECKLISTS VERIFIED (100%)' : 'CHECKLISTS INCOMPLETE'}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {TRADE_CATEGORIES.map(trade => {
             const chk = unitChecklists.find(c => c.trade_category === trade);
             const pct = chk?.completion_percentage || 0;
@@ -345,7 +346,7 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
                     : 'bg-slate-900/60 border-slate-800 text-slate-400'
                 }`}
               >
-                <div className="text-xs font-bold font-['Chakra_Petch']">{trade}</div>
+                <div className="text-xs font-bold font-['Chakra_Petch']">{TRADE_DEEP_DIVE_LABELS[trade] || trade}</div>
                 <div className="text-lg font-bold font-mono">{pct}%</div>
                 <div className="flex items-center justify-center gap-1 text-[10px] font-mono">
                   {isDone ? (
@@ -540,7 +541,7 @@ export const ReadinessSignOff: React.FC<ReadinessSignOffProps> = ({
               {!allTrades100 && (
                 <div className="p-2 rounded bg-amber-500/10 border border-amber-500/40 text-[11px] font-mono text-amber-400 flex items-center gap-1.5">
                   <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <span>Cannot sign off: All 6 trades must reach 100%.</span>
+                  <span>Cannot sign off: All 5 Deep-Dive checklists must reach 100%.</span>
                 </div>
               )}
 

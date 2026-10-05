@@ -35,6 +35,8 @@ import {
   TechnicianUser,
   Vendor,
   TRADE_CATEGORIES,
+  TRADE_SHORT_CODES,
+  TRADE_DEEP_DIVE_LABELS,
   FLOOR_PLAN_GROUPS
 } from '../types';
 import { soundManager } from '../services/audio';
@@ -195,7 +197,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
       const chk = unitChecklists.find(c => c.trade_category === trade);
       return {
         trade,
-        code: trade.slice(0, 2).toUpperCase(),
+        code: TRADE_SHORT_CODES[trade] || trade.slice(0, 2).toUpperCase(),
         pct: chk ? chk.completion_percentage : 0,
         status: chk ? chk.status : 'pending'
       };
@@ -631,13 +633,13 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
           </div>
         </div>
 
-        {/* 6 Trade Mini Badges (P, E, H, Pt, F, C) */}
+        {/* 5 Deep-Dive Trade Mini Badges (PL, EL, HV, AP, GH) */}
         <div className="space-y-1 pt-1 border-t border-slate-800/80">
           <div className="text-[10px] font-mono text-slate-400 uppercase tracking-wider flex justify-between">
-            <span>Trades Progress</span>
-            <span className="text-[9px] text-slate-500">6 Categories</span>
+            <span>Deep-Dive Checklists</span>
+            <span className="text-[9px] text-slate-500">5 Categories</span>
           </div>
-          <div className="grid grid-cols-6 gap-1">
+          <div className="grid grid-cols-5 gap-1">
             {tradeProgress.map((tp) => {
               const isComplete = tp.pct === 100;
               const isStarted = tp.pct > 0;
@@ -648,7 +650,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                     soundManager.playClick();
                     onOpenChecklist(unit.id, tp.trade);
                   }}
-                  title={`${tp.trade}: ${tp.pct}% completed`}
+                  title={`${TRADE_DEEP_DIVE_LABELS[tp.trade] || tp.trade}: ${tp.pct}% completed`}
                   className={`py-1 rounded text-center text-[10px] font-mono font-bold transition-all ${
                     isComplete
                       ? 'bg-[#00FFB4]/20 text-[#00FFB4] border border-[#00FFB4]/50'

@@ -170,53 +170,166 @@ export const DEFAULT_VENDORS: Vendor[] = [
 
 export let ACTIVE_VENDORS: Vendor[] = [...DEFAULT_VENDORS];
 
-// Initial Seed Tasks for 6 Trade Categories with fixed sequence
+export function tradeToSlug(trade: TradeCategory): string {
+  return trade.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+// Deep-Dive Make-Ready Checklist Tasks (5 Categories, 34 Component-by-Component Items)
 export const DEFAULT_TRADE_TASKS: Record<TradeCategory, { name: string; description: string }[]> = {
   Plumbing: [
-    { name: 'Main Shutoff & PRV Check', description: 'Test main shutoff valve, measure pressure regulator valve (50-70 PSI).' },
-    { name: 'Water Heater & Expansion Tank', description: 'Inspect T&P relief valve, verify anode rod, flush sediment, test element.' },
-    { name: 'Kitchen Sink & Garbage Disposal', description: 'Check supply lines, test disposal torque and rubber baffle, verify P-trap seal.' },
-    { name: 'Bathroom Vanities & Faucets', description: 'Inspect aerators, cartridge stems, drain pop-ups, and silicone perimeter.' },
-    { name: 'Toilets Flush & Dye Flapper Test', description: 'Drop food dye in tanks to verify flapper integrity, test flush volume & wax ring.' },
-    { name: 'Tub / Shower Valve & Diverter', description: 'Pressure test diverter gate, inspect scald guard setting, caulk tub surround.' }
+    {
+      name: 'Under-Sink Inspections',
+      description: 'Run water for 2 full minutes while checking supply lines, shut-off valves, and P-traps under all sinks (kitchen and both bathrooms) for slow drips.'
+    },
+    {
+      name: 'Angle Stops',
+      description: 'Turn all shut-off valves off and on to ensure they are not frozen or leaking at the stem.'
+    },
+    {
+      name: 'Toilet Components',
+      description: 'Remove the tank lid to inspect the flapper, fill valve, and overflow tube. Ensure the toilet fills quickly, shuts off completely, and the handle doesn\'t stick.'
+    },
+    {
+      name: 'Toilet Base & Wax Ring',
+      description: 'Sit on or apply pressure to the toilet bowl to ensure it does not rock. Check the floor bolts and the caulk line around the base for signs of water weeping.'
+    },
+    {
+      name: 'Shower Diverter & Tub Spout',
+      description: 'Turn on the shower and verify that water redirects 100% to the showerhead without heavily leaking out of the tub spout below.'
+    },
+    {
+      name: 'Drain Speeds',
+      description: 'Fill the bathtubs and sinks halfway, then release the water to verify vortex-style fast drainage. Clear out any hair or debris from the pop-up stoppers.'
+    },
+    {
+      name: 'Garbage Disposal Electrical & Seal',
+      description: 'Check the reset button underneath, look for rust on the bottom housing (a sign of internal failure), and tighten the mounting flange if vibrating.'
+    },
+    {
+      name: 'Water Heater (if in-unit)',
+      description: 'Inspect the drain pan for water, check the pressure relief valve for leaks, and verify the temperature is set to a safe standard (usually 120°F).'
+    }
   ],
   Electrical: [
-    { name: 'Breaker Panel & GFCI Mapping', description: 'Torque main lugs, check 15A/20A breakers, trip and reset all kitchen/bath GFCIs.' },
-    { name: 'Smoke & CO Detectors Recertification', description: 'Install fresh 10-yr lithium batteries, test audible alarm, verify expiration date.' },
-    { name: 'Receptacle Polarity & Tension Check', description: 'Insert 3-prong analyzer on all outlets, verify correct neutral/ground bonding.' },
-    { name: 'Light Fixtures, Switches & Ballasts', description: 'Replace any non-LED lamps with 3000K warm white, verify dimmer switch operation.' },
-    { name: 'Appliance Electrical Rough-in', description: 'Inspect 240V range receptacle, 30A dryer plug, and dishwasher junction box.' },
-    { name: 'Exhaust Fan CFM & Sones Verification', description: 'Test bathroom ventilation draw with paper sheet test, clean fan blower wheel.' }
+    {
+      name: 'Breaker Box Verification',
+      description: 'Open the panel door, confirm no breakers are physically loose, verify the main breaker layout matches the directory schedule, and check for any burnt smell.'
+    },
+    {
+      name: 'GFCI Tripping Speed',
+      description: 'Use a dedicated GFCI receptacle tester to force-trip the outlets in wet zones, ensuring they cut power instantly and click back into place firmly.'
+    },
+    {
+      name: 'Outlet Tension & Covers',
+      description: 'Plug a tool into every outlet to ensure the internal contacts hold the prongs tightly (loose outlets are a fire hazard). Replace all cracked, painted, or yellowed plates.'
+    },
+    {
+      name: 'Switch Functionality',
+      description: 'Flip every wall switch. Fix any "spongy" switches that do not snap cleanly into the ON/OFF positions.'
+    },
+    {
+      name: 'Fixture Glass & Bulbs',
+      description: 'Remove light globes/covers to wash out dead bugs and dust. Install brand-new matching LED bulbs (all 2700K Warm White or all 4000K Daylight per room—never mix them).'
+    },
+    {
+      name: 'Ceiling Fan Balance',
+      description: 'Tighten the mounting bracket screws and blade irons. Balance the blades if they wobble on high speed, and clean the top of the blades.'
+    },
+    {
+      name: 'Safety Alarms',
+      description: 'Check the manufacture date on the back of smoke and CO alarms (replace the entire unit if older than 10 years). Install fresh 9V or AA backup batteries.'
+    }
   ],
   HVAC: [
-    { name: 'Air Filter Replacement & Date Stamp', description: 'Insert MERV 11 filter, write turnover date and unit number on frame.' },
-    { name: 'Thermostat Calibration & Schedule Reset', description: 'Verify anticipator reading, program default 70°F eco hold mode, check battery.' },
-    { name: 'Condensate Drain Line Flush & P-Trap Clean', description: 'Pour 8 oz vinegar solution, verify float switch emergency cutoff operation.' },
-    { name: 'Supply & Return Delta-T Temp Split', description: 'Measure return air vs supply plenum temp split (target 18°F to 22°F).' },
-    { name: 'Registers, Grilles & Duct Inspection', description: 'Wipe all supply louvers, verify dampers open, inspect flex duct connections.' }
+    {
+      name: 'Filter Plenum & Fit',
+      description: 'Vacuum out the filter slot before sliding in a new pleated filter (MERV 8 minimum). Ensure the arrow points in the correct direction of airflow.'
+    },
+    {
+      name: 'Thermostat Calibration',
+      description: 'Verify the digital screen ambient temperature matches a handheld thermometer. Ensure the system kicks on within 60 seconds of changing the setting.'
+    },
+    {
+      name: 'Delta-T Temperature Drop',
+      description: 'Measure the air temperature at a supply vent and a return vent while the AC is running. The difference should be between 16°F and 20°F.'
+    },
+    {
+      name: 'Condensate Drain Flush',
+      description: 'Pour a cup of vinegar or hot water down the condensate drain line access T-pipe to clear out algae sludge. Ensure the secondary float switch functions.'
+    },
+    {
+      name: 'Register Boot Cleaning',
+      description: 'Remove supply registers completely if they are caked with dust, wash them, and check that the damper louvers open and close smoothly.'
+    }
   ],
-  Painting: [
-    { name: 'Drywall Patching & Texture Match', description: 'Spackle anchor holes, mud wall gouges, texture-blend orange peel or knockdown.' },
-    { name: 'Caulking Trim & Baseboards', description: 'Lay paintable acrylic-latex bead along baseboards, door casing, and crown seams.' },
-    { name: 'Full Wall Prime & Semi-Gloss Coat', description: 'Cut in corners, roll walls with standard property neutral color (Eggshell/Satin).' },
-    { name: 'Doors, Frames & Trim Enamel', description: 'Sand scuffs, apply ultra-white enamel to interior hollow core and slab doors.' },
-    { name: 'Ceiling Touch-ups & Corner Feathering', description: 'Address water ring spots or nail pops on acoustic or flat ceiling surfaces.' }
+  Appliances: [
+    {
+      name: 'Refrigerator Gaskets & Temps',
+      description: 'Wipe down the magnetic door seals with warm soapy water. Place thermometers inside: the fridge should be 35°F–38°F, and the freezer should be 0°F.'
+    },
+    {
+      name: 'Ice Maker Lifecycle',
+      description: 'Dump old ice cubes, wash the storage bin, and verify the water fill line doesn\'t drip or freeze over the mechanism.'
+    },
+    {
+      name: 'Oven Calibration & Elements',
+      description: 'Visually inspect the bake (bottom) and broil (top) coils for blistering or uneven glowing spots. Ensure the oven door hinges pull the door tightly shut.'
+    },
+    {
+      name: 'Range Hood & Filters',
+      description: 'Wash the metal mesh grease filters in hot water or run them through the dishwasher. Verify the fan motor doesn\'t hum or drag on lower speeds.'
+    },
+    {
+      name: 'Dishwasher Spray Arms',
+      description: 'Spin the plastic spray arms by hand to ensure they spin freely. Clear out food debris from the bottom sump filter and check the door latch microswitch.'
+    },
+    {
+      name: 'Washer/Dryer Utility Seals',
+      description: 'Clean the detergent drawer of old residue. Scrape out packed lint from the dryer exhaust duct transition hose behind the unit to prevent fire risks.'
+    }
   ],
-  Flooring: [
-    { name: 'Subfloor Moisture & Squeak Fastening', description: 'Scan subfloor moisture meter, screw down loose joist points to prevent squeaks.' },
-    { name: 'LVP / Vinyl Plank Seam & Plank Inspection', description: 'Check end-joint click locks, replace gouged planks, inspect expansion gaps.' },
-    { name: 'Carpet Deep Steam Extraction & Pad Check', description: 'Hot-water extract bedroom carpets, inspect tack strip grip and transitions.' },
-    { name: 'Base Shoe & Transition Molding Install', description: 'Affix T-moldings between tile and LVP, secure threshold reducers at doorways.' }
-  ],
-  Cleaning: [
-    { name: 'Appliance Deep Scrub & Oven Detail', description: 'Degrease range hood filters, clean oven bake elements, wipe refrigerator gaskets.' },
-    { name: 'Cabinet Interiors & Shelving Wipe-down', description: 'Vacuum sawdust/crumbs, wipe melamine shelves, clean exterior cabinet handles.' },
-    { name: 'Bathroom Tile, Grout & Mirror Polish', description: 'Descale shower glass, disinfect commodes, streak-free polish on vanity mirrors.' },
-    { name: 'Windows, Sills & Blinds Dusting', description: 'Clean vinyl window tracks, wash glass both interior sides, wipe 2-inch faux wood blinds.' },
-    { name: 'Hard Floor Microfiber Mopping & Buff', description: 'Neutral pH cleaner mop across all hard surfaces, sanitize thresholds.' },
-    { name: 'Final Odor Neutralization & Airing Out', description: 'Place hypoallergenic charcoal odor absorber, set lockbox key for supervisor walk.' }
+  'General, Hardware & Turn': [
+    {
+      name: 'Drywall Patches',
+      description: 'Use spackle on nail holes and mesh tape on structural cracks. Sand with a fine-grit block, prime the raw spackle, and use a matching roller texture to blend the paint.'
+    },
+    {
+      name: 'Full Painting Cut-ins',
+      description: 'Look for flashing (shiny spots) or roller marks. If touch-ups stand out, paint the entire wall panel from corner to corner.'
+    },
+    {
+      name: 'Door Hanging & Strike Plates',
+      description: 'Tighten loose screws on door hinges. Adjust strike plates so the door latches securely without needing to be pushed, pulled, or lifted.'
+    },
+    {
+      name: 'Lock Keyways (Re-keying)',
+      description: 'Lubricate key cylinders with graphite spray (never WD-40 on locks). Ensure deadbolts throw completely into the door frame pocket.'
+    },
+    {
+      name: 'Window Glides & Screens',
+      description: 'Vacuum out the bottom aluminum tracks of windows. Ensure window panes lock tightly together to prevent drafts, and verify insect screens have no tears.'
+    },
+    {
+      name: 'Blind Maintenance',
+      description: 'Inspect every single blind slat for creases or cracks. Test the tilt gear rod and the lift strings to make sure the blinds lock evenly at any height.'
+    },
+    {
+      name: 'Cabinet Realignment',
+      description: 'Adjust the 3-way screws on concealed European-style cabinet hinges to level crooked doors. Fix or replace loose cabinet knobs or drawer glides.'
+    },
+    {
+      name: 'Silicon Caulking Strips',
+      description: 'Cut away old caulk down to the substrate, clean the gap with rubbing alcohol to kill mold spores, let dry, and apply a smooth, continuous bead of 100% silicone.'
+    }
   ]
 };
+
+function isChecklistUpToDate(chk: Checklist | null | undefined): boolean {
+  if (!chk || !TRADE_CATEGORIES.includes(chk.trade_category as TradeCategory)) return false;
+  const expected = DEFAULT_TRADE_TASKS[chk.trade_category as TradeCategory];
+  if (!expected || !Array.isArray(chk.task_list) || chk.task_list.length !== expected.length) return false;
+  return expected.every((exp, idx) => chk.task_list[idx]?.name === exp.name);
+}
 
 // Known Demo IDs to automatically exclude and purge while preserving all user-created units
 export const DEMO_UNIT_IDS = new Set([
@@ -464,6 +577,15 @@ class OfflineDB {
           const chk = change.doc.data() as Checklist;
           const chkId = change.doc.id || (chk && chk.id);
           if (chk && DEMO_UNIT_IDS.has(chk.unit_id)) {
+            if (chkId) {
+              await this.deleteFromStore('checklists', chkId);
+              await this.deleteFromFirestore('checklists', chkId);
+              hasChanges = true;
+            }
+            continue;
+          }
+          // Purge retired checklist categories or outdated task lists from Firestore & local store
+          if (chk && !isChecklistUpToDate(chk)) {
             if (chkId) {
               await this.deleteFromStore('checklists', chkId);
               await this.deleteFromFirestore('checklists', chkId);
@@ -822,7 +944,7 @@ class OfflineDB {
     for (const unit of INITIAL_UNITS) {
       for (const trade of TRADE_CATEGORIES) {
         const defaultTasks = DEFAULT_TRADE_TASKS[trade];
-        const checklistId = `chk-${unit.id}-${trade.toLowerCase()}`;
+        const checklistId = `chk-${unit.id}-${tradeToSlug(trade)}`;
 
         // Determine initial completion based on unit status
         let completedCount = 0;
@@ -833,12 +955,10 @@ class OfflineDB {
             completedCount = defaultTasks.length; // 100%
           } else if (trade === 'HVAC') {
             completedCount = Math.floor(defaultTasks.length * 0.7);
-          } else if (trade === 'Painting') {
+          } else if (trade === 'Appliances') {
             completedCount = 2;
-          } else if (trade === 'Flooring') {
-            completedCount = 1;
           } else {
-            completedCount = 0;
+            completedCount = 1;
           }
         } else {
           // Inspection
@@ -909,7 +1029,7 @@ class OfflineDB {
         id: 'wo-1002-1',
         unit_id: 'unit-1002',
         unit_number: '1002',
-        trade_category: 'Painting',
+        trade_category: 'General, Hardware & Turn',
         priority: 'Medium',
         description: 'Previous tenant mounted 75in TV bracket. Requires heavy spackle and texture blend.',
         status: 'In Progress',
@@ -950,7 +1070,7 @@ class OfflineDB {
         id: 'wo-1004-1',
         unit_id: 'unit-1004',
         unit_number: '1004',
-        trade_category: 'Cleaning',
+        trade_category: 'General, Hardware & Turn',
         priority: 'Low',
         description: 'Final balcony power wash and patio sliding glass track cleaning.',
         status: 'Resolved',
@@ -996,9 +1116,9 @@ class OfflineDB {
         timestamp: Date.now() - 1000 * 60 * 18,
         author_name: 'Elena Rostova',
         author_role: 'Field Technician',
-        trade_category: 'Cleaning',
+        trade_category: 'General, Hardware & Turn',
         action_type: 'stage_changed',
-        message: 'All 6 trade categories verified at 100%. Advanced unit to Ready stage.',
+        message: 'All 5 Deep-Dive trade categories verified at 100%. Advanced unit to Ready stage.',
         synced: true
       },
       {
@@ -1032,11 +1152,11 @@ class OfflineDB {
         id: 'notif-1003-1',
         timestamp: Date.now() - 1000 * 60 * 16,
         type: 'checklist_100',
-        title: 'Cleaning 100% Complete',
-        message: 'Unit 1003 Cleaning trade checklist completed by Elena Rostova. Unit is ready for final sign-off walk.',
+        title: 'General, Hardware & Turn 100% Complete',
+        message: 'Unit 1003 trade checklist completed by Elena Rostova. Unit is ready for final sign-off walk.',
         unit_id: 'unit-1003',
         unit_number: '1003',
-        trade_category: 'Cleaning',
+        trade_category: 'General, Hardware & Turn',
         read: false,
         email_dispatched: true
       }
@@ -1079,51 +1199,68 @@ class OfflineDB {
 
   public async getChecklistsForUnit(unitId: string): Promise<Checklist[]> {
     const all = await this.getAllFromStore<Checklist>('checklists');
-    const existing = all.filter(c => c.unit_id === unitId);
-    if (existing.length > 0) {
-      return existing;
-    }
+    const existingForUnit = all.filter(c => c.unit_id === unitId);
 
-    // Auto-generate fresh checklists for all 6 trades if missing
-    const unit = await this.getUnitById(unitId);
-    if (unit) {
-      const generated: Checklist[] = [];
-      for (const trade of TRADE_CATEGORIES) {
-        const defaultTasks = DEFAULT_TRADE_TASKS[trade];
-        const chkId = `chk-${unit.id}-${trade.toLowerCase()}`;
-        const taskList: Task[] = defaultTasks.map((t, idx) => ({
-          id: `tsk-${chkId}-${idx + 1}`,
-          checklist_id: chkId,
-          sequence_order: idx + 1,
-          name: t.name,
-          description: t.description,
-          is_completed: false,
-          notes: '',
-          assigned_to: unit.assigned_technician_id || 'sup-1',
-          version: 1,
-          sync_status: 'synced'
-        }));
-
-        const newChecklist: Checklist = {
-          id: chkId,
-          unit_id: unit.id,
-          trade_category: trade,
-          task_list: taskList,
-          completion_percentage: 0,
-          status: 'pending',
-          assigned_technician_id: unit.assigned_technician_id || 'sup-1',
-          last_updated: Date.now(),
-          last_updated_by: 'System',
-          version: 1
-        };
-        await this.putInStore('checklists', newChecklist);
-        this.pushToFirestore('checklists', newChecklist.id, newChecklist).catch(() => {});
-        generated.push(newChecklist);
+    // 1. Delete any retired trade checklists (e.g. Painting, Flooring, Cleaning) or outdated checklists
+    const validByTrade = new Map<TradeCategory, Checklist>();
+    for (const chk of existingForUnit) {
+      if (!isChecklistUpToDate(chk)) {
+        await this.deleteFromStore('checklists', chk.id);
+        this.deleteFromFirestore('checklists', chk.id).catch(() => {});
+      } else {
+        validByTrade.set(chk.trade_category, chk);
       }
-      return generated;
     }
 
-    return [];
+    if (validByTrade.size === TRADE_CATEGORIES.length) {
+      return TRADE_CATEGORIES.map(t => validByTrade.get(t)!);
+    }
+
+    // 2. Generate any missing or migrated Deep-Dive checklists for this unit
+    const unit = await this.getUnitById(unitId);
+    const assignedTechId = unit?.assigned_technician_id || 'sup-1';
+    const result: Checklist[] = [];
+
+    for (const trade of TRADE_CATEGORIES) {
+      const current = validByTrade.get(trade);
+      if (current) {
+        result.push(current);
+        continue;
+      }
+
+      const defaultTasks = DEFAULT_TRADE_TASKS[trade];
+      const chkId = `chk-${unitId}-${tradeToSlug(trade)}`;
+      const taskList: Task[] = defaultTasks.map((t, idx) => ({
+        id: `tsk-${chkId}-${idx + 1}`,
+        checklist_id: chkId,
+        sequence_order: idx + 1,
+        name: t.name,
+        description: t.description,
+        is_completed: false,
+        notes: '',
+        assigned_to: assignedTechId,
+        version: 1,
+        sync_status: 'synced'
+      }));
+
+      const newChecklist: Checklist = {
+        id: chkId,
+        unit_id: unitId,
+        trade_category: trade,
+        task_list: taskList,
+        completion_percentage: 0,
+        status: 'pending',
+        assigned_technician_id: assignedTechId,
+        last_updated: Date.now(),
+        last_updated_by: 'System',
+        version: 1
+      };
+      await this.putInStore('checklists', newChecklist);
+      this.pushToFirestore('checklists', newChecklist.id, newChecklist).catch(() => {});
+      result.push(newChecklist);
+    }
+
+    return result;
   }
 
   public async getChecklistById(id: string): Promise<Checklist | undefined> {
@@ -1282,13 +1419,15 @@ class OfflineDB {
     this.pushToFirestore('notifications', notif.id, notif);
   }
 
-  // Automatically check if all 6 checklists are 100% and suggest or advance to 'Ready'
+  // Automatically check if all checklists are 100% and suggest or advance to 'Ready'
   public async reevaluateUnitStatus(unitId: string): Promise<TurnoverStage> {
     const unit = await this.getUnitById(unitId);
     if (!unit || unit.current_status === 'Rent Ready') return unit?.current_status || 'In-Progress';
 
     const checklists = await this.getChecklistsForUnit(unitId);
-    const allTrades100 = checklists.length === 6 && checklists.every(c => c.completion_percentage === 100);
+    const allTrades100 =
+      checklists.length === TRADE_CATEGORIES.length &&
+      checklists.every(c => c.completion_percentage === 100);
     const anyStarted = checklists.some(c => c.completion_percentage > 0);
 
     let newStatus = unit.current_status;
@@ -1880,10 +2019,10 @@ class OfflineDB {
     await this.putInStore('units', newUnit);
     await this.pushToFirestore('units', newUnit.id, newUnit);
 
-    // Generate fresh checklists for all 6 trades
+    // Generate fresh checklists for all 5 Deep-Dive categories
     for (const trade of TRADE_CATEGORIES) {
       const defaultTasks = DEFAULT_TRADE_TASKS[trade];
-      const chkId = `chk-${newUnit.id}-${trade.toLowerCase()}`;
+      const chkId = `chk-${newUnit.id}-${tradeToSlug(trade)}`;
       const taskList: Task[] = defaultTasks.map((t, idx) => ({
         id: `tsk-${chkId}-${idx + 1}`,
         checklist_id: chkId,
