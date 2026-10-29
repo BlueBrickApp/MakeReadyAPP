@@ -165,6 +165,16 @@ export const DEFAULT_VENDORS: Vendor[] = [
     email: 'tony@allstarappliance.com',
     status: 'Preferred',
     notes: 'OEM GE/Whirlpool/Frigidaire parts in stock.'
+  },
+  {
+    id: 'vendor-8',
+    name: 'TurnKey Make Ready Punch Crew',
+    trade_category: 'Make Ready Punch',
+    contact_person: 'Carlos Delgado',
+    phone: '(555) 743-8820',
+    email: 'carlos@makereadypunch.com',
+    status: 'Preferred',
+    notes: 'Unit punch-out, hardware adjustments, drywall & paint touch-up, caulking & signoff.'
   }
 ];
 
@@ -1504,12 +1514,13 @@ class OfflineDB {
     return updatedUnit;
   }
 
-  // Assign a Vendor / Contractor to a Unit (supports multiple vendor task assignments per unit, plus inline custom vendor creation)
+  // Assign a Vendor / Contractor to a Unit (supports multiple vendor task assignments per unit, plus inline custom vendor creation and scheduled date)
   public async assignVendorToUnit(
     unitId: string,
     vendorIdOrCustomName: string,
     taskNote: string,
-    author: TechnicianUser
+    author: TechnicianUser,
+    scheduledDate?: string
   ): Promise<Unit> {
     const unit = await this.getUnitById(unitId);
     if (!unit) throw new Error('Unit not found');
@@ -1548,16 +1559,40 @@ class OfflineDB {
       vendor_name: vendorObj.name,
       trade_category: vendorObj.trade_category,
       task_note: taskNote.trim() || undefined,
+      scheduled_date: scheduledDate?.trim() || undefined,
       assigned_at: Date.now()
     };
 
     const updatedList = [...existingList, newAssignment];
+
+    let scheduleEvents = Array.isArray(unit.schedule_events) ? [...unit.schedule_events] : [];
+    if (scheduledDate?.trim()) {
+      const lower = vendorObj.trade_category.toLowerCase();
+      const tradeCodes: ScheduleTradeCode[] = [];
+      if (lower.includes('paint')) tradeCodes.push('PA');
+      else if (lower.includes('carpet')) tradeCodes.push('CP');
+      else if (lower.includes('floor')) tradeCodes.push('FL');
+      else if (lower.includes('clean') || lower.includes('housekeep') || lower.includes('hk')) tradeCodes.push('HK');
+
+      scheduleEvents.push({
+        id: `sched-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        date: scheduledDate.trim(),
+        trade_codes: tradeCodes.length > 0 ? tradeCodes : undefined,
+        activity: taskNote.trim() || `${vendorObj.trade_category} - ${vendorObj.name}`,
+        vendor_id: vendorObj.id,
+        vendor_name: vendorObj.name,
+        status: 'Scheduled',
+        notes: taskNote.trim() ? `Assigned: ${taskNote.trim()}` : undefined,
+        created_at: Date.now()
+      });
+    }
 
     const updatedUnit: Unit = {
       ...unit,
       assigned_vendor_id: vendorObj.id,
       assigned_vendor: vendorObj.name,
       assigned_vendors: updatedList,
+      schedule_events: scheduleEvents,
       last_updated: Date.now()
     };
 
@@ -2010,9 +2045,10 @@ class OfflineDB {
     const newUnit: Unit = {
       ...unitData,
       assigned_tech: unitData.assigned_tech || assignedTechObj?.name || (author ? author.name : 'Supervisor'),
-      assigned_vendor_id: assignedVendorObj?.id || unitData.assigned_vendor_id || '',
-      assigned_vendor: assignedVendorObj?.name || unitData.assigned_vendor || '',
+      assigned_vendor_id: unitData.assigned_vendor_id || assignedVendorObj?.id || (initialVendors[0]?.vendor_id || ''),
+      assigned_vendor: unitData.assigned_vendor || assignedVendorObj?.name || (initialVendors[0]?.vendor_name || ''),
       assigned_vendors: initialVendors,
+      schedule_events: Array.isArray(unitData.schedule_events) ? unitData.schedule_events : [],
       id: `unit-${Date.now()}`,
       last_updated: Date.now()
     };

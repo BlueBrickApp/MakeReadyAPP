@@ -179,8 +179,13 @@ export default function App() {
   };
 
   // Handler: Assign Vendor & Task to a Unit
-  const handleAssignVendorToUnit = async (unitId: string, vendorId: string, taskNote: string) => {
-    await offlineDB.assignVendorToUnit(unitId, vendorId, taskNote, currentUser);
+  const handleAssignVendorToUnit = async (
+    unitId: string, 
+    vendorId: string, 
+    taskNote: string,
+    scheduledDate?: string
+  ) => {
+    await offlineDB.assignVendorToUnit(unitId, vendorId, taskNote, currentUser, scheduledDate);
     await loadData();
   };
 

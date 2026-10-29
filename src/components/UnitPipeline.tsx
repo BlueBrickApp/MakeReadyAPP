@@ -37,7 +37,8 @@ import {
   TRADE_CATEGORIES,
   TRADE_SHORT_CODES,
   TRADE_DEEP_DIVE_LABELS,
-  FLOOR_PLAN_GROUPS
+  FLOOR_PLAN_GROUPS,
+  parseUnitFloorPlanDetails
 } from '../types';
 import { soundManager } from '../services/audio';
 import { offlineDB } from '../services/db';
@@ -51,7 +52,7 @@ interface UnitPipelineProps {
   technicians?: TechnicianUser[];
   vendors?: Vendor[];
   onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
-  onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string) => Promise<void>;
+  onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string, scheduledDate?: string) => Promise<void>;
   onRemoveVendorFromUnit?: (unitId: string, vendorId: string, assignedAt?: number) => Promise<void>;
   onAddScheduleEvent?: (
     unitId: string,
@@ -141,6 +142,9 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   const [selectedVendorIdForUnit, setSelectedVendorIdForUnit] = useState<string>('');
   const [customVendorNameForUnit, setCustomVendorNameForUnit] = useState<string>('');
   const [vendorTaskForUnit, setVendorTaskForUnit] = useState<string>('');
+  const [vendorDateForUnit, setVendorDateForUnit] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
 
   const isSupervisor = currentUser.role === 'Maintenance Supervisor';
 
@@ -229,21 +233,25 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
     const nextStage = getNextStage(unit.current_status);
     const prevStage = getPrevStage(unit.current_status);
     const stageInfo = STAGES.find(s => s.stage === unit.current_status);
+    const fpDetails = parseUnitFloorPlanDetails(unit.floor_plan);
 
     return (
       <div
         key={unit.id}
         className="group bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-[#00FFB4]/50 rounded-lg p-3.5 transition-all shadow-md hover:shadow-[0_0_20px_rgba(0,255,180,0.12)] space-y-3"
       >
-        {/* Top: Unit #, Floor Plan, Building, Stage badge if in grid mode */}
+        {/* Top: Unit #, Floor Plan (Class & Sq Ft), Building, Stage badge if in grid mode */}
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-['Chakra_Petch'] font-bold text-lg text-white group-hover:text-[#00FFB4] transition-colors">
                 #{unit.unit_number}
               </span>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-slate-300 border border-slate-700">
-                {unit.floor_plan}
+              <span
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#EC4899]/15 text-pink-300 border border-[#EC4899]/40"
+                title={`Unit Class: ${fpDetails.unitClass} | Area: ${fpDetails.squareFeetText}`}
+              >
+                Class {fpDetails.unitClass} • {fpDetails.squareFeetText}
               </span>
               {inGridMode && stageInfo && (
                 <span 
@@ -373,8 +381,13 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                           className="flex items-start justify-between gap-1.5 bg-slate-900/90 px-2 py-1 rounded border border-slate-800 text-[10px] font-mono"
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="text-slate-100 font-semibold truncate">
-                              {uv.vendor_name}
+                            <div className="text-slate-100 font-semibold truncate flex items-center justify-between gap-1">
+                              <span>{uv.vendor_name}</span>
+                              {uv.scheduled_date && (
+                                <span className="text-[9px] font-mono text-[#00FFB4] bg-[#00FFB4]/10 border border-[#00FFB4]/30 px-1 py-0.2 rounded shrink-0">
+                                  📅 {uv.scheduled_date}
+                                </span>
+                              )}
                             </div>
                             <div className="text-slate-400 text-[9px] truncate">
                               {uv.trade_category}
@@ -425,11 +438,24 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                         />
                       )}
 
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] font-mono text-slate-400 flex items-center gap-1">
+                          <Calendar className="w-2.5 h-2.5 text-[#00FFB4]" />
+                          <span>Work Date (Fecha de Trabajo):</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={vendorDateForUnit}
+                          onChange={(e) => setVendorDateForUnit(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 text-[#00FFB4] font-mono text-[10px] px-2 py-1 rounded focus:outline-none focus:border-[#00FFB4]"
+                        />
+                      </div>
+
                       <input
                         type="text"
                         value={vendorTaskForUnit}
                         onChange={(e) => setVendorTaskForUnit(e.target.value)}
-                        placeholder="Assigned task (e.g. Paint, Carpet, Clean)..."
+                        placeholder="Assigned task (e.g. Make Ready Punch, Paint, Carpet)..."
                         className="w-full bg-slate-900 border border-slate-700 text-white text-[10px] font-mono px-2 py-1 rounded focus:outline-none focus:border-[#00FFB4]"
                       />
 
@@ -460,7 +486,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                                 : selectedVendorIdForUnit;
                             if (!targetVendor) return;
                             soundManager.playClick();
-                            await onAssignVendorToUnit(unit.id, targetVendor, vendorTaskForUnit);
+                            await onAssignVendorToUnit(unit.id, targetVendor, vendorTaskForUnit, vendorDateForUnit);
                             setAddingVendorUnitId(null);
                             setCustomVendorNameForUnit('');
                             setVendorTaskForUnit('');

@@ -4,7 +4,9 @@ import {
   ChevronDown,
   ChevronUp,
   Plus,
-  Truck
+  Truck,
+  Layers,
+  Sparkles
 } from 'lucide-react';
 import {
   Unit,
@@ -12,7 +14,10 @@ import {
   ScheduleEventStatus,
   ScheduleTradeCode,
   SCHEDULE_TRADE_CODES,
-  Vendor
+  getScheduleTradeMeta,
+  normalizeScheduleTradeCode,
+  Vendor,
+  parseUnitFloorPlanDetails
 } from '../types';
 import { soundManager } from '../services/audio';
 
@@ -145,6 +150,11 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
     return [...raw].sort((a, b) => a.date.localeCompare(b.date));
   }, [unit.schedule_events]);
 
+  const floorPlanDetails = useMemo(
+    () => parseUnitFloorPlanDetails(unit.floor_plan),
+    [unit.floor_plan]
+  );
+
   const [customPickerDate, setCustomPickerDate] = useState<string>('');
   const [isOpen, setIsOpen] = useState(defaultExpanded);
   const [selectedVendorOption, setSelectedVendorOption] = useState<string>('IN_HOUSE');
@@ -152,6 +162,33 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
   const [showCustomRow, setShowCustomRow] = useState<boolean>(false);
   const [customNote, setCustomNote] = useState<string>('');
   const [busyKey, setBusyKey] = useState<string | null>(null);
+
+  // Dedicated Carpet Menu state (Unit Class & Square Feet display & dispatch)
+  const [isCarpetMenuOpen, setIsCarpetMenuOpen] = useState<boolean>(false);
+  const [carpetServiceType, setCarpetServiceType] = useState<string>('Full Carpet Replacement');
+  const [carpetTargetDate, setCarpetTargetDate] = useState<string>('');
+  const [carpetVendorSelection, setCarpetVendorSelection] = useState<string>('AUTO');
+  const [carpetCustomVendor, setCarpetCustomVendor] = useState<string>('');
+  const [carpetNotes, setCarpetNotes] = useState<string>('');
+  const [isSchedulingCarpet, setIsSchedulingCarpet] = useState<boolean>(false);
+
+  const carpetEvents = useMemo(() => {
+    return scheduleEvents.filter(
+      (ev) =>
+        (Array.isArray(ev.trade_codes) && ev.trade_codes.includes('CP')) ||
+        ev.activity.toLowerCase().includes('carpet')
+    );
+  }, [scheduleEvents]);
+
+  const carpetVendors = useMemo(() => {
+    return vendors.filter(
+      (v) =>
+        v.trade_category.toLowerCase().includes('carpet') ||
+        v.trade_category.toLowerCase().includes('floor') ||
+        v.name.toLowerCase().includes('carpet') ||
+        v.name.toLowerCase().includes('floor')
+    );
+  }, [vendors]);
 
   const calendarDays = useMemo(() => {
     const eventDates = scheduleEvents.map((e) => e.date);
@@ -187,35 +224,100 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
     return selectedVendorOption || 'IN_HOUSE';
   };
 
+  const handleScheduleCarpetService = async () => {
+    if (!onAddScheduleEvent) return;
+    soundManager.playClick();
+    setIsSchedulingCarpet(true);
+
+    try {
+      const chosenDate = carpetTargetDate || todayIso || new Date().toISOString().split('T')[0];
+      const isTargetToday = chosenDate === todayIso;
+      const initialStatus: ScheduleEventStatus = isTargetToday ? 'In Progress' : 'Scheduled';
+
+      let resolvedVendor: string | undefined = undefined;
+      if (carpetVendorSelection === 'AUTO') {
+        resolvedVendor = carpetVendors[0]?.id || 'IN_HOUSE';
+      } else if (carpetVendorSelection === 'CUSTOM') {
+        resolvedVendor = carpetCustomVendor.trim() ? `custom:${carpetCustomVendor.trim()}` : undefined;
+      } else if (carpetVendorSelection === 'NONE') {
+        resolvedVendor = undefined;
+      } else {
+        resolvedVendor = carpetVendorSelection;
+      }
+
+      const activityTitle = `CP — ${carpetServiceType} (${floorPlanDetails.unitClass} • ${floorPlanDetails.squareFeetText})`;
+      const fullNotes = [
+        `Unit Class: ${floorPlanDetails.unitClass}`,
+        `Area: ${floorPlanDetails.squareFeetText} (~${floorPlanDetails.squareYards} yd²)`,
+        carpetNotes.trim()
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
+      await onAddScheduleEvent(unit.id, {
+        date: chosenDate,
+        trade_codes: ['CP'],
+        activity: activityTitle,
+        vendorIdOrCustom: resolvedVendor,
+        status: initialStatus,
+        notes: fullNotes
+      });
+
+      setCarpetNotes('');
+      setCarpetCustomVendor('');
+      setIsCarpetMenuOpen(false);
+    } finally {
+      setIsSchedulingCarpet(false);
+    }
+  };
+
   /**
-   * Clicking PL, EL, HV, PA, FL, or HK directly inside a Calendar Date cell:
+   * Clicking PC, CP, FL, HK, or PA directly inside a Calendar Date cell:
+   * (PL replaced by PC = Punch per user request; PC stands for Punch)
    * - Unassigned -> Adds to Calendar on that date (Today = 'In Progress', Future = 'Scheduled')
    * - Scheduled -> Cycles to 'In Progress'
    * - In Progress -> Cycles to 'Completed' (Done)
    * - Completed -> Removes from that date
    */
   const handleCalendarCellTradeClick = async (day: CalendarDayItem, code: ScheduleTradeCode) => {
-    const key = `${day.iso}-${code}`;
+    const normCode = normalizeScheduleTradeCode(code);
+    const key = `${day.iso}-${normCode}`;
     if (busyKey === key) return;
     soundManager.playClick();
 
     const dayEvents = eventsByDate.get(day.iso) || [];
-    const existingEvent = dayEvents.find(
-      (ev) =>
-        (Array.isArray(ev.trade_codes) && ev.trade_codes.includes(code)) ||
-        ev.activity.startsWith(`${code} —`)
-    );
+    const existingEvent = dayEvents.find((ev) => {
+      if (Array.isArray(ev.trade_codes)) {
+        if (ev.trade_codes.some((c) => normalizeScheduleTradeCode(c) === normCode)) {
+          return true;
+        }
+      }
+      if (normCode === 'PC') {
+        return (
+          ev.activity.startsWith('PC —') ||
+          ev.activity.startsWith('PL —') ||
+          ev.activity.toLowerCase().includes('punch')
+        );
+      }
+      return ev.activity.startsWith(`${normCode} —`);
+    });
 
-    const tradeMeta = SCHEDULE_TRADE_CODES.find((t) => t.code === code);
+    const tradeMeta = getScheduleTradeMeta(normCode);
     setBusyKey(key);
     try {
       if (!existingEvent) {
         if (!onAddScheduleEvent) return;
         const initialStatus: ScheduleEventStatus = day.isToday ? 'In Progress' : 'Scheduled';
+        let activityLabel = `${tradeMeta.code} — ${tradeMeta.fullName}`;
+        if (normCode === 'CP') {
+          activityLabel = `CP — Carpet Service (${floorPlanDetails.unitClass} • ${floorPlanDetails.squareFeetText})`;
+        } else if (normCode === 'PC') {
+          activityLabel = 'PC — Make Ready Punch';
+        }
         await onAddScheduleEvent(unit.id, {
           date: day.iso,
-          trade_codes: [code],
-          activity: tradeMeta ? `${code} — ${tradeMeta.label}` : code,
+          trade_codes: [normCode],
+          activity: activityLabel,
           vendorIdOrCustom: resolveVendorSelection(),
           status: initialStatus,
           notes: customNote.trim() || undefined
@@ -262,15 +364,8 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
     return 'Scheduled';
   };
 
-  const getTradeMeta = (code: ScheduleTradeCode) => {
-    return (
-      SCHEDULE_TRADE_CODES.find((t) => t.code === code) || {
-        code,
-        label: code,
-        defaultActivity: code,
-        color: '#00FFB4'
-      }
-    );
+  const getTradeMeta = (code: string) => {
+    return getScheduleTradeMeta(code);
   };
 
   const getUnitStageColor = (stage: string) => {
@@ -305,6 +400,12 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
           <Calendar className="w-3.5 h-3.5 text-[#00E5FF] shrink-0" />
           <span className="text-[10px] font-mono font-bold text-slate-100">
             Make-Ready Schedule
+          </span>
+          <span
+            className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-[#EC4899]/20 text-[#EC4899] border border-[#EC4899]/40"
+            title="Apartment Unit Class & Square Footage (Pies Cuadrados)"
+          >
+            {floorPlanDetails.unitClass} • {floorPlanDetails.squareFeetText}
           </span>
           <span
             className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${getUnitStageColor(
@@ -361,7 +462,8 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
                   </span>
 
                   {Array.isArray(ev.trade_codes) &&
-                    ev.trade_codes.map((code) => {
+                    ev.trade_codes.map((rawCode) => {
+                      const code = normalizeScheduleTradeCode(rawCode);
                       const meta = getTradeMeta(code);
                       return (
                         <span
@@ -371,9 +473,11 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
                             color: meta.color,
                             borderColor: `${meta.color}60`
                           }}
-                          className="px-1 py-0.2 rounded text-[8px] font-mono font-bold border shrink-0"
+                          className="px-1.5 py-0.2 rounded text-[8px] font-mono font-bold border shrink-0 inline-flex items-center gap-0.5"
+                          title={`${meta.code}: ${meta.fullName} (${meta.description})`}
                         >
-                          {code}
+                          <span className="font-extrabold">{code}</span>
+                          <span className="text-slate-300 font-medium">:{meta.label}</span>
                         </span>
                       );
                     })}
@@ -400,7 +504,7 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
         </div>
       )}
 
-      {/* Interactive Calendar with PL, EL, HV, PA, FL, HK directly inside each Date */}
+      {/* Interactive Calendar with PC, CP, FL, HK, PA directly inside each Date */}
       {isOpen && (
         <div className="p-2 border-t border-slate-800 space-y-2 bg-slate-950/95">
           {/* Top Calendar Controls: Legend + Date Picker + Optional Vendor Selector */}
@@ -417,14 +521,43 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Dedicated Carpet Menu Button displaying Unit Class & Square Feet */}
+              <button
+                type="button"
+                onClick={() => {
+                  soundManager.playClick();
+                  setIsCarpetMenuOpen(!isCarpetMenuOpen);
+                }}
+                className={`px-2 py-0.5 rounded text-[9px] font-mono font-bold flex items-center gap-1 transition-all border cursor-pointer ${
+                  isCarpetMenuOpen
+                    ? 'bg-[#EC4899] text-white border-[#EC4899] shadow-[0_0_8px_rgba(236,72,153,0.4)]'
+                    : carpetEvents.length > 0
+                    ? 'bg-[#EC4899]/20 text-[#EC4899] border-[#EC4899]/60 hover:bg-[#EC4899]/30'
+                    : 'bg-slate-900 text-pink-300 border-slate-700 hover:border-[#EC4899]/60'
+                }`}
+                title={`Carpet Menu for Unit #${unit.unit_number}: Class ${floorPlanDetails.unitClass} • ${floorPlanDetails.squareFeetText}`}
+              >
+                <Layers className="w-2.5 h-2.5 text-pink-400" />
+                <span>Carpet Menu</span>
+                <span className="bg-pink-950/90 px-1 py-0.2 rounded text-[8px] text-pink-200 border border-pink-700/50">
+                  Class {floorPlanDetails.unitClass}
+                </span>
+                <span className="bg-slate-950 px-1 py-0.2 rounded text-[8px] text-cyan-300 border border-cyan-800/50">
+                  {floorPlanDetails.squareFeetText}
+                </span>
+                {carpetEvents.length > 0 && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00FFB4] animate-pulse" />
+                )}
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
                   soundManager.playClick();
                   setShowCustomRow(!showCustomRow);
                 }}
-                className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 hover:border-[#00FFB4] text-amber-300 text-[9px] font-mono flex items-center gap-1"
+                className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 hover:border-[#00FFB4] text-amber-300 text-[9px] font-mono flex items-center gap-1 cursor-pointer"
                 title="Select Vendor or add a custom date to the calendar"
               >
                 <Truck className="w-2.5 h-2.5 text-amber-400" />
@@ -432,6 +565,262 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Trade Codes & Specifications Key Bar */}
+          <div className="w-full p-2 rounded-lg bg-slate-900/90 border border-slate-800 space-y-1.5">
+            <div className="flex flex-wrap items-center justify-between gap-1 text-[8.5px] font-mono">
+              <span className="font-bold text-slate-200 flex items-center gap-1.5 uppercase tracking-wider">
+                <Sparkles className="w-3 h-3 text-[#FFB800]" />
+                Make-Ready Trade Specifications (Trade Key)
+              </span>
+              <span className="text-slate-400 text-[8px]">
+                Click trade in any calendar date to assign or cycle status
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 pt-0.5">
+              {SCHEDULE_TRADE_CODES.map((t) => (
+                <div
+                  key={t.code}
+                  className="px-2 py-1 rounded border text-[8.5px] font-mono flex items-center gap-1.5 bg-slate-950/80 transition-all hover:bg-slate-950"
+                  style={{ borderColor: `${t.color}45` }}
+                  title={`${t.code}: ${t.fullName} — ${t.description}`}
+                >
+                  <span
+                    className="px-1.5 py-0.2 rounded font-extrabold text-[9px] border shrink-0"
+                    style={{
+                      backgroundColor: `${t.color}20`,
+                      borderColor: `${t.color}60`,
+                      color: t.color
+                    }}
+                  >
+                    {t.code}
+                  </span>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <div className="font-bold text-white truncate text-[9px]">{t.label}</div>
+                    <div className="text-[7.5px] text-slate-400 truncate">{t.fullName}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Dedicated Carpet Menu & Specifications Panel */}
+          {isCarpetMenuOpen && (
+            <div className="p-2.5 rounded-lg bg-gradient-to-b from-slate-900/95 to-slate-950/95 border border-[#EC4899]/50 shadow-[0_0_12px_rgba(236,72,153,0.15)] space-y-2 text-[9px] font-mono animate-fadeIn">
+              {/* Header with Unit Class and Square Footage (Pies Cuadrados) */}
+              <div className="flex flex-wrap items-center justify-between gap-1.5 pb-1.5 border-b border-slate-800">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[#EC4899] font-bold text-[10px] flex items-center gap-1">
+                    <Layers className="w-3 h-3" />
+                    CARPET MENU & SPECIFICATIONS
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-[#EC4899]/20 text-pink-300 border border-[#EC4899]/50 font-bold">
+                    Unit Class: {floorPlanDetails.unitClass}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 font-bold">
+                    Area: {floorPlanDetails.squareFeetText}
+                  </span>
+                  {floorPlanDetails.squareYards > 0 && (
+                    <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
+                      ~{floorPlanDetails.squareYards} Sq Yards (yd²)
+                    </span>
+                  )}
+                  <span className="text-slate-400 text-[8px]">
+                    ({floorPlanDetails.category})
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsCarpetMenuOpen(false)}
+                  className="text-slate-400 hover:text-white px-1 cursor-pointer"
+                  title="Close Carpet Menu"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Carpet Service Preset Selector */}
+              <div className="space-y-1">
+                <span className="text-slate-300 font-bold block">Select Carpet Service:</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {[
+                    {
+                      label: 'Full Carpet Replacement',
+                      desc: `Install new carpet & pad (${floorPlanDetails.unitClass} • ${floorPlanDetails.squareFeetText})`
+                    },
+                    {
+                      label: 'Deep Steam Clean & Shampoo',
+                      desc: `Hot water extraction & sanitization (${floorPlanDetails.squareFeetText})`
+                    },
+                    {
+                      label: 'Pet Stain & Odor Treatment',
+                      desc: 'Enzyme sub-floor injection & deodorizer'
+                    },
+                    {
+                      label: 'Tack Strip & Pad Inspection',
+                      desc: 'Check moisture, transitions & edge tack'
+                    },
+                    {
+                      label: 'Carpet Stretch & Seam Repair',
+                      desc: 'Power stretch ripples & weld broken seams'
+                    },
+                    {
+                      label: 'Pre-Walk Measurement & Quote',
+                      desc: `Vendor verify yardage (${floorPlanDetails.squareFeetText})`
+                    }
+                  ].map((srv) => (
+                    <button
+                      key={srv.label}
+                      type="button"
+                      onClick={() => setCarpetServiceType(srv.label)}
+                      className={`p-1.5 rounded text-left border transition-all cursor-pointer ${
+                        carpetServiceType === srv.label
+                          ? 'bg-[#EC4899]/25 border-[#EC4899] text-white shadow-[0_0_6px_rgba(236,72,153,0.25)]'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="font-bold text-pink-200">{srv.label}</div>
+                      <div className="text-[8px] text-slate-400 truncate">{srv.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Target Date + Vendor Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                <div className="space-y-0.5">
+                  <span className="text-slate-400 block">Schedule Date:</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="date"
+                      value={carpetTargetDate || todayIso}
+                      onChange={(e) => setCarpetTargetDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 text-white text-[9px] font-mono px-2 py-1 rounded focus:outline-none focus:border-[#EC4899]"
+                    />
+                    {todayIso && (
+                      <button
+                        type="button"
+                        onClick={() => setCarpetTargetDate(todayIso)}
+                        className={`px-1.5 py-1 rounded border text-[8px] font-bold cursor-pointer ${
+                          (carpetTargetDate || todayIso) === todayIso
+                            ? 'bg-[#00FFB4]/20 border-[#00FFB4] text-[#00FFB4]'
+                            : 'bg-slate-900 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        Today
+                      </button>
+                    )}
+                    {tomorrowIso && (
+                      <button
+                        type="button"
+                        onClick={() => setCarpetTargetDate(tomorrowIso)}
+                        className={`px-1.5 py-1 rounded border text-[8px] font-bold cursor-pointer ${
+                          carpetTargetDate === tomorrowIso
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                            : 'bg-slate-900 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        Tmrw
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-0.5">
+                  <span className="text-slate-400 block">Flooring / Carpet Vendor:</span>
+                  <select
+                    value={carpetVendorSelection}
+                    onChange={(e) => setCarpetVendorSelection(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 text-amber-300 text-[9px] font-mono px-1.5 py-1 rounded focus:outline-none focus:border-[#EC4899]"
+                  >
+                    {carpetVendors.length > 0 && (
+                      <option value="AUTO">🚚 Suggested: {carpetVendors[0].name}</option>
+                    )}
+                    <option value="IN_HOUSE">🔧 In-House Maintenance Tech</option>
+                    {vendors.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        🚚 {v.name} ({v.trade_category})
+                      </option>
+                    ))}
+                    <option value="CUSTOM">+ New Carpet Vendor / Subcontractor...</option>
+                    <option value="NONE">-- No Vendor Assigned --</option>
+                  </select>
+                </div>
+              </div>
+
+              {carpetVendorSelection === 'CUSTOM' && (
+                <input
+                  type="text"
+                  value={carpetCustomVendor}
+                  onChange={(e) => setCarpetCustomVendor(e.target.value)}
+                  placeholder="Enter Carpet Contractor / Vendor Name..."
+                  className="w-full bg-slate-950 border border-amber-400/60 text-white text-[9px] font-mono px-2 py-1 rounded focus:outline-none focus:border-amber-400"
+                />
+              )}
+
+              {/* Optional custom note */}
+              <input
+                type="text"
+                value={carpetNotes}
+                onChange={(e) => setCarpetNotes(e.target.value)}
+                placeholder="Optional note (e.g. Color: Warm Beige, Pad 8lb, PO #1042)..."
+                className="w-full bg-slate-950 border border-slate-700 text-white text-[9px] font-mono px-2 py-1 rounded focus:outline-none focus:border-[#EC4899]"
+              />
+
+              {/* Dispatch Action Button */}
+              <div className="flex items-center justify-between pt-1 border-t border-slate-800">
+                <span className="text-[8px] text-slate-400">
+                  Class {floorPlanDetails.unitClass} • {floorPlanDetails.squareFeetText} (~{floorPlanDetails.squareYards} yd²)
+                </span>
+                <button
+                  type="button"
+                  disabled={isSchedulingCarpet}
+                  onClick={handleScheduleCarpetService}
+                  className="px-3 py-1 rounded bg-[#EC4899] hover:bg-[#db2777] text-white font-mono font-bold text-[9px] flex items-center gap-1 shadow-[0_0_8px_rgba(236,72,153,0.3)] disabled:opacity-50 cursor-pointer transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Carpet Event to Schedule</span>
+                </button>
+              </div>
+
+              {/* Existing Carpet Schedule Events on this Unit */}
+              {carpetEvents.length > 0 && (
+                <div className="pt-1.5 border-t border-slate-800/80 space-y-1">
+                  <span className="text-[8px] text-pink-300 font-bold block">
+                    Current Carpet Schedule for Unit #{unit.unit_number}:
+                  </span>
+                  <div className="space-y-1 max-h-28 overflow-y-auto pr-0.5">
+                    {carpetEvents.map((ev) => {
+                      const badge = formatDateBadge(ev.date, todayIso, tomorrowIso);
+                      return (
+                        <div
+                          key={ev.id}
+                          className="flex items-center justify-between gap-1 bg-slate-950 px-2 py-1 rounded border border-pink-900/40 text-[8px]"
+                        >
+                          <div className="flex items-center gap-1 truncate min-w-0">
+                            <span className="px-1 py-0.2 rounded bg-pink-950 text-pink-300 border border-pink-700/40 font-bold shrink-0">
+                              {badge.label}
+                            </span>
+                            <span className="text-white truncate font-medium">{ev.activity}</span>
+                            {ev.vendor_name && <span className="text-amber-300 truncate">· {ev.vendor_name}</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => cycleStatus(ev)}
+                            className={`px-1.5 py-0.2 rounded font-bold border shrink-0 cursor-pointer ${getStatusBadgeStyle(ev.status)}`}
+                          >
+                            {getStatusLabel(ev.status)}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Optional Vendor & Custom Date Toolbar */}
           {showCustomRow && (
@@ -488,7 +877,7 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
             </div>
           )}
 
-          {/* Calendar Grid: Each Date Card has PL, EL, HV, PA, FL, HK directly inside */}
+          {/* Calendar Grid: Each Date Card has PC, CP, FL, HK, PA directly inside */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
             {calendarDays.map((d) => {
               const dayEvents = eventsByDate.get(d.iso) || [];
@@ -551,26 +940,48 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
                     </span>
                   </div>
 
-                  {/* Direct PL, EL, HV, PA, FL, HK Buttons INSIDE this Calendar Date */}
-                  <div className="grid grid-cols-3 gap-1">
+                  {/* Direct PC, CP, FL, HK, PA Buttons INSIDE this Calendar Date with explicit trade names */}
+                  <div className="grid grid-cols-5 gap-0.5 sm:gap-1">
                     {SCHEDULE_TRADE_CODES.map((trade) => {
-                      const tradeEvent = dayEvents.find(
-                        (ev) =>
-                          (Array.isArray(ev.trade_codes) &&
-                            ev.trade_codes.includes(trade.code)) ||
-                          ev.activity.startsWith(`${trade.code} —`)
-                      );
+                      const tradeEvent = dayEvents.find((ev) => {
+                        if (Array.isArray(ev.trade_codes)) {
+                          if (
+                            ev.trade_codes.some(
+                              (c) => normalizeScheduleTradeCode(c) === trade.code
+                            )
+                          ) {
+                            return true;
+                          }
+                        }
+                        if (trade.code === 'PC') {
+                          return (
+                            ev.activity.startsWith('PC —') ||
+                            ev.activity.startsWith('PL —') ||
+                            ev.activity.toLowerCase().includes('punch')
+                          );
+                        }
+                        return ev.activity.startsWith(`${trade.code} —`);
+                      });
                       const status = tradeEvent?.status;
                       const isBusy = busyKey === `${d.iso}-${trade.code}`;
 
                       let btnStyle =
-                        'bg-slate-950/90 border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-200';
+                        'bg-slate-950/90 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200';
                       let statusDotColor = '';
 
                       if (status === 'Scheduled') {
                         btnStyle =
                           'bg-[#00E5FF]/20 border-[#00E5FF] text-[#00E5FF] font-extrabold shadow-[0_0_6px_rgba(0,229,255,0.2)]';
                         statusDotColor = '#00E5FF';
+                        if (trade.code === 'CP') {
+                          btnStyle =
+                            'bg-[#EC4899]/20 border-[#EC4899] text-[#EC4899] font-extrabold shadow-[0_0_6px_rgba(236,72,153,0.25)]';
+                          statusDotColor = '#EC4899';
+                        } else if (trade.code === 'PC') {
+                          btnStyle =
+                            'bg-[#FFB800]/20 border-[#FFB800] text-[#FFB800] font-extrabold shadow-[0_0_6px_rgba(255,184,0,0.25)]';
+                          statusDotColor = '#FFB800';
+                        }
                       } else if (status === 'In Progress') {
                         btnStyle =
                           'bg-[#FFB800]/25 border-[#FFB800] text-[#FFB800] font-extrabold shadow-[0_0_6px_rgba(255,184,0,0.25)]';
@@ -589,18 +1000,23 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
                           onClick={() => handleCalendarCellTradeClick(d, trade.code)}
                           title={
                             status
-                              ? `${trade.code} (${trade.label}) on ${d.monthShort} ${d.dayNum}: ${status} — Click to change status / remove`
-                              : `Click to schedule ${trade.code} (${trade.label}) on ${d.monthShort} ${d.dayNum}`
+                              ? `${trade.code}: ${trade.fullName} on ${d.monthShort} ${d.dayNum}: ${status} — Click to cycle status / remove`
+                              : `Click to schedule ${trade.code}: ${trade.fullName} on ${d.monthShort} ${d.dayNum}`
                           }
-                          className={`py-0.5 px-1 rounded border text-[9px] font-mono flex items-center justify-center gap-0.5 transition-all cursor-pointer ${btnStyle}`}
+                          className={`py-1 px-0.5 rounded border text-[8px] font-mono flex flex-col items-center justify-center transition-all cursor-pointer ${btnStyle}`}
                         >
-                          {statusDotColor && (
-                            <span
-                              className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor: statusDotColor }}
-                            />
-                          )}
-                          <span>{trade.code}</span>
+                          <div className="flex items-center gap-0.5">
+                            {statusDotColor && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0"
+                                style={{ backgroundColor: statusDotColor }}
+                              />
+                            )}
+                            <span className="font-extrabold text-[8.5px] leading-tight">{trade.code}</span>
+                          </div>
+                          <span className="text-[6.5px] uppercase tracking-tight opacity-90 truncate max-w-full font-semibold leading-tight">
+                            {trade.shortLabel}
+                          </span>
                         </button>
                       );
                     })}
@@ -634,7 +1050,8 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
                       </span>
 
                       {Array.isArray(ev.trade_codes) &&
-                        ev.trade_codes.map((code) => {
+                        ev.trade_codes.map((rawCode) => {
+                          const code = normalizeScheduleTradeCode(rawCode);
                           const meta = getTradeMeta(code);
                           return (
                             <span
@@ -644,10 +1061,11 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
                                 color: meta.color,
                                 borderColor: `${meta.color}60`
                               }}
-                              className="px-1 py-0.2 rounded text-[8px] font-mono font-bold border shrink-0"
-                              title={meta.label}
+                              className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold border shrink-0 inline-flex items-center gap-1"
+                              title={`${meta.code}: ${meta.fullName} (${meta.description})`}
                             >
-                              {code}
+                              <span className="font-extrabold">{code}</span>
+                              <span className="opacity-90 font-medium">· {meta.label}</span>
                             </span>
                           );
                         })}

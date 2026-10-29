@@ -99,31 +99,207 @@ export const FLOOR_PLAN_GROUPS = [
 
 export type FloorPlan = string;
 
+export interface UnitFloorPlanDetails {
+  unitClass: string;        // e.g. "A1", "B1", "B2", "C1"
+  squareFeetText: string;   // e.g. "675 SF", "1,075 SF"
+  squareFeetNumber: number; // e.g. 675, 1075
+  category: string;         // e.g. "1 Bedroom", "2 Bedroom"
+  squareYards: number;      // e.g. Math.ceil(SF / 9)
+}
+
+/**
+ * Extracts unit class (e.g. A1, B1) and square footage (SF / pies cuadrados)
+ * from any floor plan string or predefined catalog.
+ */
+export function parseUnitFloorPlanDetails(rawFloorPlan?: string): UnitFloorPlanDetails {
+  const plan = (rawFloorPlan || '').trim();
+
+  // 1. Direct search in known catalog
+  for (const group of FLOOR_PLAN_GROUPS) {
+    for (const opt of group.options) {
+      const [code, sf] = opt.split('—').map((s) => s.trim());
+      if (
+        plan === opt ||
+        plan.toLowerCase() === code.toLowerCase() ||
+        plan.toLowerCase().startsWith(code.toLowerCase() + ' ') ||
+        plan.toLowerCase().startsWith(code.toLowerCase() + '—')
+      ) {
+        const num = parseInt(sf.replace(/[^0-9]/g, ''), 10) || 0;
+        return {
+          unitClass: code,
+          squareFeetText: sf,
+          squareFeetNumber: num,
+          category: group.category,
+          squareYards: Math.ceil(num / 9)
+        };
+      }
+    }
+  }
+
+  // 2. Regex parsing
+  const classMatch = plan.match(/^([A-Za-z]+[0-9]+)/i);
+  const sfMatch = plan.match(/(\d[\d,]*)\s*(?:SF|sq\s*ft|sqft|pies)/i);
+
+  const unitClass = classMatch ? classMatch[1].toUpperCase() : (plan.split(/[\s—\-]/)[0] || 'Unit');
+  let sfNum = 0;
+  let sfText = 'N/A';
+  if (sfMatch) {
+    sfNum = parseInt(sfMatch[1].replace(/,/g, ''), 10);
+    sfText = `${sfMatch[1]} SF`;
+  }
+
+  // Fallback: Check catalog by class prefix if SF not found
+  if (sfNum === 0 && unitClass) {
+    for (const group of FLOOR_PLAN_GROUPS) {
+      for (const opt of group.options) {
+        if (opt.toLowerCase().startsWith(unitClass.toLowerCase() + ' ')) {
+          const [, sf] = opt.split('—').map((s) => s.trim());
+          sfNum = parseInt(sf.replace(/[^0-9]/g, ''), 10) || 0;
+          sfText = sf;
+          return {
+            unitClass,
+            squareFeetText: sfText,
+            squareFeetNumber: sfNum,
+            category: group.category,
+            squareYards: Math.ceil(sfNum / 9)
+          };
+        }
+      }
+    }
+  }
+
+  return {
+    unitClass: unitClass || 'Standard',
+    squareFeetText: sfText !== 'N/A' ? sfText : 'Square Footage N/A',
+    squareFeetNumber: sfNum,
+    category: unitClass.startsWith('A')
+      ? '1 Bedroom'
+      : unitClass.startsWith('B')
+      ? '2 Bedroom'
+      : unitClass.startsWith('C')
+      ? '3 Bedroom'
+      : 'Apartment',
+    squareYards: sfNum > 0 ? Math.ceil(sfNum / 9) : 0
+  };
+}
+
 export interface UnitVendorAssignment {
   vendor_id: string;
   vendor_name: string;
   trade_category: string;
   task_note?: string;
+  scheduled_date?: string; // YYYY-MM-DD date when vendor will perform work
   assigned_at: number;
 }
 
 export type ScheduleEventStatus = 'In Progress' | 'Scheduled' | 'Completed';
 
-export type ScheduleTradeCode = 'PL' | 'EL' | 'HV' | 'PA' | 'FL' | 'HK';
+// Schedule Trade Codes: PL replaced with PC (Punch) per user request
+export type ScheduleTradeCode = 'PC' | 'CP' | 'FL' | 'HK' | 'PA' | 'PL' | 'EL' | 'HV';
 
-export const SCHEDULE_TRADE_CODES: {
+export interface ScheduleTradeMeta {
   code: ScheduleTradeCode;
   label: string;
+  shortLabel: string;
+  fullName: string;
   defaultActivity: string;
   color: string;
-}[] = [
-  { code: 'PL', label: 'Plumbing', defaultActivity: 'Plumbing Make-Ready', color: '#00E5FF' },
-  { code: 'EL', label: 'Electrical', defaultActivity: 'Electrical & Fixtures', color: '#FFB800' },
-  { code: 'HV', label: 'HVAC', defaultActivity: 'HVAC Service & Filter', color: '#FF6B35' },
-  { code: 'PA', label: 'Painting', defaultActivity: 'Full Paint / Touch-Up Paint', color: '#A855F7' },
-  { code: 'FL', label: 'Flooring', defaultActivity: 'Flooring / Carpet Installation', color: '#38BDF8' },
-  { code: 'HK', label: 'Housekeeping', defaultActivity: 'Deep Make-Ready Cleaning (HK)', color: '#00FFB4' },
+  description: string;
+}
+
+export const SCHEDULE_TRADE_CODES: ScheduleTradeMeta[] = [
+  {
+    code: 'PC',
+    label: 'Punch',
+    shortLabel: 'Punch',
+    fullName: 'Make Ready Punch',
+    defaultActivity: 'Make Ready Punch (PC)',
+    color: '#FFB800',
+    description: 'Make Ready Punch: hardware, outlet covers, door/cabinet adjustments & touch-up details'
+  },
+  {
+    code: 'CP',
+    label: 'Carpet',
+    shortLabel: 'Carpet',
+    fullName: 'Carpet Service / Install',
+    defaultActivity: 'Carpet Service / Install (CP)',
+    color: '#EC4899',
+    description: 'Carpet Service: replacement, deep steam & shampoo, tack strips & pad check'
+  },
+  {
+    code: 'FL',
+    label: 'Flooring',
+    shortLabel: 'Flooring',
+    fullName: 'Flooring / Vinyl Plank',
+    defaultActivity: 'Flooring / Vinyl Plank (FL)',
+    color: '#38BDF8',
+    description: 'Flooring: LVP installation, vinyl plank, subfloor repairs & transitions'
+  },
+  {
+    code: 'HK',
+    label: 'Housekeeping',
+    shortLabel: 'Clean',
+    fullName: 'Deep Housekeeping & Cleaning',
+    defaultActivity: 'Deep Make-Ready Cleaning (HK)',
+    color: '#00FFB4',
+    description: 'Housekeeping: deep turnover sanitization, appliances, window sills & tracks'
+  },
+  {
+    code: 'PA',
+    label: 'Paint',
+    shortLabel: 'Paint',
+    fullName: 'Painting & Drywall',
+    defaultActivity: 'Full Paint / Touch-Up Paint (PA)',
+    color: '#A855F7',
+    description: 'Painting: full spray, primer cut-ins, drywall patch sanding & trim'
+  }
 ];
+
+export function normalizeScheduleTradeCode(code: string): ScheduleTradeCode {
+  if (!code) return 'PC';
+  const upper = code.toUpperCase().trim();
+  if (upper === 'PL') return 'PC'; // Migrate legacy PL to PC (Punch)
+  return upper as ScheduleTradeCode;
+}
+
+export function getScheduleTradeMeta(code: string): ScheduleTradeMeta {
+  const norm = normalizeScheduleTradeCode(code);
+  const found = SCHEDULE_TRADE_CODES.find((t) => t.code === norm);
+  if (found) return found;
+
+  if (norm === 'EL') {
+    return {
+      code: 'EL',
+      label: 'Electrical',
+      shortLabel: 'Elec',
+      fullName: 'Electrical Service',
+      defaultActivity: 'Electrical & Fixtures',
+      color: '#F97316',
+      description: 'Breaker box, GFCI tripping, fixture bulbs'
+    };
+  }
+  if (norm === 'HV') {
+    return {
+      code: 'HV',
+      label: 'HVAC',
+      shortLabel: 'HVAC',
+      fullName: 'HVAC Climate Control',
+      defaultActivity: 'HVAC Service & Filter',
+      color: '#06B6D4',
+      description: 'Air filter, thermostat calibration, delta-T temp'
+    };
+  }
+
+  return {
+    code: norm,
+    label: norm,
+    shortLabel: norm,
+    fullName: norm,
+    defaultActivity: norm,
+    color: '#00FFB4',
+    description: norm
+  };
+}
 
 export interface UnitScheduleEvent {
   id: string;
@@ -138,6 +314,7 @@ export interface UnitScheduleEvent {
 }
 
 export const MAKE_READY_ACTIVITY_PRESETS = [
+  'Make Ready Punch',
   'Trash Out & Initial Walk',
   'Drywall & Patching',
   'Full Paint / Touch-Up Paint',
@@ -272,6 +449,7 @@ export interface Vendor {
 }
 
 export const VENDOR_SPECIALTY_PRESETS = [
+  'Make Ready Punch',
   'Flooring & Carpets',
   'Painting & Drywall',
   'Deep Cleaning & Make-Ready',

@@ -52,6 +52,10 @@ const getVendorMessageTemplates = (vendor: Vendor) => [
     body: `Hi ${vendor.contact_person || vendor.name}, can you confirm if your team is available this week to take on ${vendor.trade_category} for our turnover schedule?`
   },
   {
+    label: 'Make Ready Punch-Out',
+    body: `Hi ${vendor.contact_person || vendor.name}, we need a Make Ready Punch pass on unit turnover to finalize details before the final inspection. What day can you punch it out? Thanks!`
+  },
+  {
     label: 'Job Completion Status',
     body: `Hi ${vendor.contact_person || vendor.name}, checking in on the completion and punch-out status for your ${vendor.trade_category} work at our property. Please text back an update. Thank you!`
   },
@@ -412,6 +416,26 @@ export const ManageVendorsModal: React.FC<ManageVendorsModalProps> = ({
                       </option>
                     ))}
                   </select>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {['Make Ready Punch', 'Flooring & Carpets', 'Painting & Drywall', 'Deep Cleaning & Make-Ready'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setTradeCategory(preset)}
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+                          tradeCategory === preset
+                            ? preset === 'Make Ready Punch'
+                              ? 'bg-amber-400 text-black border-amber-400 font-bold'
+                              : 'bg-[#00FFB4] text-black border-[#00FFB4] font-bold'
+                            : preset === 'Make Ready Punch'
+                            ? 'bg-amber-950/60 text-amber-300 border-amber-500/50 hover:bg-amber-900/50 font-bold'
+                            : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        {preset === 'Make Ready Punch' ? '🔨 Make Ready Punch' : preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Contact Person */}
