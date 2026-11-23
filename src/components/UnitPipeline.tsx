@@ -22,7 +22,9 @@ import {
   Eye,
   EyeOff,
   Truck,
-  Plus
+  Plus,
+  AlertTriangle,
+  BellRing
 } from 'lucide-react';
 import { 
   Unit, 
@@ -38,11 +40,16 @@ import {
   TRADE_SHORT_CODES,
   TRADE_DEEP_DIVE_LABELS,
   FLOOR_PLAN_GROUPS,
-  parseUnitFloorPlanDetails
+  parseUnitFloorPlanDetails,
+  sortVendorAssignmentsByDate,
+  extractVendorAssignmentDate,
+  getOverdueVendorTasksForUnit,
+  getLocalTodayIso
 } from '../types';
 import { soundManager } from '../services/audio';
 import { offlineDB } from '../services/db';
 import { UnitMakeReadyCalendar } from './UnitMakeReadyCalendar';
+import { ChecklistProgressBar } from './ChecklistProgressBar';
 
 interface UnitPipelineProps {
   units: Unit[];
@@ -78,6 +85,7 @@ interface UnitPipelineProps {
   onMoveStage: (unitId: string, newStage: TurnoverStage) => void;
   onDeleteUnit?: (unitId: string) => void;
   onOpenNewUnit?: () => void;
+  onTriggerOverdueCheck?: () => Promise<number>;
 }
 
 const STAGES: { stage: TurnoverStage; title: string; color: string; desc: string }[] = [
@@ -126,10 +134,14 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   onOpenDashboard,
   onMoveStage,
   onDeleteUnit,
-  onOpenNewUnit
+  onOpenNewUnit,
+  onTriggerOverdueCheck
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterFloorPlan, setFilterFloorPlan] = useState<string>('all');
+  const [onlyBehindSchedule, setOnlyBehindSchedule] = useState<boolean>(false);
+  const [overdueScanMessage, setOverdueScanMessage] = useState<string | null>(null);
+  const [isScanningOverdue, setIsScanningOverdue] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'board' | 'grid'>('board');
   const [hideEmptyStages, setHideEmptyStages] = useState<boolean>(true);
   const [confirmDeleteUnitId, setConfirmDeleteUnitId] = useState<string | null>(null);
@@ -180,6 +192,16 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
     }, 6000);
   };
 
+  const todayIso = getLocalTodayIso();
+  const unitOverdueMap = new Map(
+    units.map((u) => [u.id, getOverdueVendorTasksForUnit(u, todayIso)])
+  );
+  const overdueUnits = units.filter((u) => (unitOverdueMap.get(u.id)?.length || 0) > 0);
+  const totalOverdueVendorTasks = overdueUnits.reduce(
+    (sum, u) => sum + (unitOverdueMap.get(u.id)?.length || 0),
+    0
+  );
+
   const filteredUnits = units.filter(u => {
     if (!u) return false;
     const q = (searchQuery || '').toLowerCase().trim();
@@ -187,27 +209,41 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
     const bldg = String(u.building || '').toLowerCase();
     const matchesSearch = !q || unitNum.includes(q) || bldg.includes(q);
     const matchesFloorPlan = filterFloorPlan === 'all' || u.floor_plan === filterFloorPlan;
-    return matchesSearch && matchesFloorPlan;
+    const matchesBehind = !onlyBehindSchedule || (unitOverdueMap.get(u.id)?.length || 0) > 0;
+    return matchesSearch && matchesFloorPlan && matchesBehind;
   });
 
   const getUnitTradeSummary = (unitId: string) => {
     const unitChecklists = checklists.filter(c => c.unit_id === unitId);
-    if (unitChecklists.length === 0) return { overallPct: 0, tradeProgress: [] };
+    if (unitChecklists.length === 0) return { unitChecklists, overallPct: 0, tradeProgress: [] };
 
-    const totalPct = unitChecklists.reduce((sum, c) => sum + c.completion_percentage, 0);
-    const overallPct = Math.round(totalPct / unitChecklists.length);
+    let finishedTasks = 0;
+    let totalTasks = 0;
 
     const tradeProgress = TRADE_CATEGORIES.map(trade => {
       const chk = unitChecklists.find(c => c.trade_category === trade);
+      const tasks = Array.isArray(chk?.task_list) ? chk.task_list : [];
+      const done = tasks.filter(t => t.is_completed).length;
+      const total = tasks.length;
+      finishedTasks += done;
+      totalTasks += total;
+      const pct = total > 0 ? Math.round((done / total) * 100) : (chk ? chk.completion_percentage : 0);
+
       return {
         trade,
         code: TRADE_SHORT_CODES[trade] || trade.slice(0, 2).toUpperCase(),
-        pct: chk ? chk.completion_percentage : 0,
+        pct,
+        done,
+        total,
         status: chk ? chk.status : 'pending'
       };
     });
 
-    return { overallPct, tradeProgress };
+    const overallPct = totalTasks > 0
+      ? Math.round((finishedTasks / totalTasks) * 100)
+      : Math.round(unitChecklists.reduce((sum, c) => sum + c.completion_percentage, 0) / unitChecklists.length);
+
+    return { unitChecklists, overallPct, tradeProgress };
   };
 
   const getUnitOpenWorkOrders = (unitId: string) => {
@@ -227,9 +263,11 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
   };
 
   const renderUnitCard = (unit: Unit, inGridMode: boolean = false) => {
-    const { overallPct, tradeProgress } = getUnitTradeSummary(unit.id);
+    const { unitChecklists, tradeProgress } = getUnitTradeSummary(unit.id);
     const openWOs = getUnitOpenWorkOrders(unit.id);
     const hasEmergencyWO = openWOs.some(w => w.priority === 'Emergency' || w.priority === 'High');
+    const overdueTasks = unitOverdueMap.get(unit.id) || [];
+    const hasOverdueVendors = overdueTasks.length > 0;
     const nextStage = getNextStage(unit.current_status);
     const prevStage = getPrevStage(unit.current_status);
     const stageInfo = STAGES.find(s => s.stage === unit.current_status);
@@ -238,15 +276,30 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
     return (
       <div
         key={unit.id}
-        className="group bg-slate-900/90 hover:bg-slate-900 border border-slate-800 hover:border-[#00FFB4]/50 rounded-lg p-3.5 transition-all shadow-md hover:shadow-[0_0_20px_rgba(0,255,180,0.12)] space-y-3"
+        className={`group rounded-lg p-3.5 transition-all space-y-3 border ${
+          hasOverdueVendors
+            ? 'bg-gradient-to-b from-slate-900/95 to-[#FF3366]/[0.06] border-[#FF3366]/70 hover:border-[#FF3366] shadow-[0_0_20px_rgba(255,51,102,0.16)]'
+            : 'bg-slate-900/90 hover:bg-slate-900 border-slate-800 hover:border-[#00FFB4]/50 shadow-md hover:shadow-[0_0_20px_rgba(0,255,180,0.12)]'
+        }`}
       >
         {/* Top: Unit #, Floor Plan (Class & Sq Ft), Building, Stage badge if in grid mode */}
         <div className="flex items-start justify-between">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-['Chakra_Petch'] font-bold text-lg text-white group-hover:text-[#00FFB4] transition-colors">
+              <span className={`font-['Chakra_Petch'] font-bold text-lg transition-colors ${
+                hasOverdueVendors ? 'text-[#FF3366]' : 'text-white group-hover:text-[#00FFB4]'
+              }`}>
                 #{unit.unit_number}
               </span>
+              {hasOverdueVendors && (
+                <span
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#FF3366]/20 text-[#FF3366] border border-[#FF3366]/50 flex items-center gap-1 animate-pulse"
+                  title={`${overdueTasks.length} assigned vendor task(s) behind scheduled completion date`}
+                >
+                  <AlertTriangle className="w-3 h-3 shrink-0" />
+                  <span>BEHIND ({overdueTasks.length})</span>
+                </span>
+              )}
               <span
                 className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-[#EC4899]/15 text-pink-300 border border-[#EC4899]/40"
                 title={`Unit Class: ${fpDetails.unitClass} | Area: ${fpDetails.squareFeetText}`}
@@ -322,7 +375,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
 
             {/* Assigned Vendors & Tasks for this Apartment Unit */}
             {(() => {
-              const unitVendors: UnitVendorAssignment[] = Array.isArray(unit.assigned_vendors) && unit.assigned_vendors.length > 0
+              const rawUnitVendors: UnitVendorAssignment[] = Array.isArray(unit.assigned_vendors) && unit.assigned_vendors.length > 0
                 ? unit.assigned_vendors
                 : unit.assigned_vendor
                 ? [
@@ -334,6 +387,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                     }
                   ]
                 : [];
+              const unitVendors = sortVendorAssignmentsByDate(rawUnitVendors);
 
               const isAddingThisUnit = addingVendorUnitId === unit.id;
 
@@ -375,17 +429,38 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      {unitVendors.map((uv, idx) => (
+                      {unitVendors.map((uv, idx) => {
+                        const displayDate = extractVendorAssignmentDate(uv);
+                        const isVendorBehind = Boolean(
+                          displayDate &&
+                          displayDate < todayIso &&
+                          overdueTasks.some(
+                            (ot) =>
+                              ot.scheduledDate === displayDate &&
+                              ot.vendorName.toLowerCase() === (uv.vendor_name || '').toLowerCase()
+                          )
+                        );
+                        return (
                         <div
                           key={`${uv.vendor_id}-${uv.assigned_at || idx}`}
-                          className="flex items-start justify-between gap-1.5 bg-slate-900/90 px-2 py-1 rounded border border-slate-800 text-[10px] font-mono"
+                          className={`flex items-start justify-between gap-1.5 px-2 py-1 rounded border text-[10px] font-mono ${
+                            isVendorBehind
+                              ? 'bg-[#FF3366]/10 border-[#FF3366]/50'
+                              : 'bg-slate-900/90 border-slate-800'
+                          }`}
                         >
                           <div className="min-w-0 flex-1">
                             <div className="text-slate-100 font-semibold truncate flex items-center justify-between gap-1">
-                              <span>{uv.vendor_name}</span>
-                              {uv.scheduled_date && (
-                                <span className="text-[9px] font-mono text-[#00FFB4] bg-[#00FFB4]/10 border border-[#00FFB4]/30 px-1 py-0.2 rounded shrink-0">
-                                  📅 {uv.scheduled_date}
+                              <span className={isVendorBehind ? 'text-red-200' : ''}>{uv.vendor_name}</span>
+                              {displayDate && (
+                                <span
+                                  className={`text-[9px] font-mono px-1 py-0.2 rounded shrink-0 border ${
+                                    isVendorBehind
+                                      ? 'text-[#FF3366] bg-[#FF3366]/15 border-[#FF3366]/50 font-bold'
+                                      : 'text-[#00FFB4] bg-[#00FFB4]/10 border-[#00FFB4]/30'
+                                  }`}
+                                >
+                                  {isVendorBehind ? `⚠ ${displayDate} LATE` : `📅 ${displayDate}`}
                                 </span>
                               )}
                             </div>
@@ -409,7 +484,37 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                             </button>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {hasOverdueVendors && (
+                    <div className="mt-1.5 p-2 rounded bg-[#FF3366]/15 border border-[#FF3366]/50 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-mono font-bold text-[#FF3366]">
+                        <span className="flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 shrink-0" />
+                          <span>SUPERVISOR ALERT: BEHIND SCHEDULE</span>
+                        </span>
+                        <span>{overdueTasks.length} task{overdueTasks.length === 1 ? '' : 's'}</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        {overdueTasks.slice(0, 3).map((ot) => (
+                          <div key={ot.id} className="text-[10px] font-mono text-red-100 flex items-center justify-between gap-2">
+                            <span className="truncate">
+                              • <strong>{ot.vendorName}</strong>: {ot.activity}
+                            </span>
+                            <span className="text-[#FF3366] font-bold shrink-0">
+                              {ot.scheduledDate} ({ot.daysOverdue}d late)
+                            </span>
+                          </div>
+                        ))}
+                        {overdueTasks.length > 3 && (
+                          <div className="text-[9px] font-mono text-red-200/80">
+                            +{overdueTasks.length - 3} more overdue task(s)
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
 
@@ -641,23 +746,11 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
           </div>
         </div>
 
-        {/* Overall Progress Bar */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-[11px] font-mono">
-            <span className="text-slate-400">Make-Ready Completion</span>
-            <span className="text-[#00FFB4] font-bold">{overallPct}%</span>
-          </div>
-          <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-slate-800">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${overallPct}%`,
-                backgroundColor: overallPct === 100 ? '#00FFB4' : '#00E5FF',
-                boxShadow: overallPct === 100 ? '0 0 10px #00FFB4' : 'none'
-              }}
-            />
-          </div>
-        </div>
+        {/* Active Inspection Checklist Progress Bar (finished vs total tasks) */}
+        <ChecklistProgressBar
+          checklists={unitChecklists}
+          onOpenChecklist={(trade) => onOpenChecklist(unit.id, trade)}
+        />
 
         {/* 5 Deep-Dive Trade Mini Badges (PL, EL, HV, AP, GH) */}
         <div className="space-y-1 pt-1 border-t border-slate-800/80">
@@ -676,7 +769,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
                     soundManager.playClick();
                     onOpenChecklist(unit.id, tp.trade);
                   }}
-                  title={`${TRADE_DEEP_DIVE_LABELS[tp.trade] || tp.trade}: ${tp.pct}% completed`}
+                  title={`${TRADE_DEEP_DIVE_LABELS[tp.trade] || tp.trade}: ${tp.done}/${tp.total} tasks (${tp.pct}%)`}
                   className={`py-1 rounded text-center text-[10px] font-mono font-bold transition-all ${
                     isComplete
                       ? 'bg-[#00FFB4]/20 text-[#00FFB4] border border-[#00FFB4]/50'
@@ -905,8 +998,110 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
         </div>
       )}
 
+      {/* Supervisor Overdue Vendor Alert Banner */}
+      {overdueUnits.length > 0 && (
+        <div className="bg-gradient-to-r from-[#FF3366]/15 via-[#FF3366]/10 to-slate-900 border border-[#FF3366]/60 rounded-xl p-4 shadow-[0_0_25px_rgba(255,51,102,0.14)] space-y-3">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2 rounded-lg bg-[#FF3366]/20 border border-[#FF3366]/50 text-[#FF3366] shrink-0 animate-pulse">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="font-['Chakra_Petch'] font-bold text-sm sm:text-base text-white tracking-wide">
+                    SUPERVISOR TRIGGER: VENDOR TASKS FALLING BEHIND SCHEDULE
+                  </h3>
+                  <span className="px-2 py-0.5 rounded bg-[#FF3366]/25 text-[#FF3366] border border-[#FF3366]/50 font-mono text-[10px] font-bold">
+                    {overdueUnits.length} {overdueUnits.length === 1 ? 'UNIT' : 'UNITS'} • {totalOverdueVendorTasks} OVERDUE TASK{totalOverdueVendorTasks === 1 ? '' : 'S'}
+                  </span>
+                </div>
+                <p className="text-xs font-mono text-red-100/90 mt-0.5">
+                  Assigned vendor tasks have passed their scheduled completion date without completion sign-off.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  soundManager.playClick();
+                  setOnlyBehindSchedule(!onlyBehindSchedule);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition-all ${
+                  onlyBehindSchedule
+                    ? 'bg-[#FF3366] text-white border-[#FF3366] shadow-[0_0_15px_rgba(255,51,102,0.35)]'
+                    : 'bg-slate-950/90 text-red-200 border-[#FF3366]/50 hover:bg-[#FF3366]/20'
+                }`}
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>{onlyBehindSchedule ? 'Showing Behind Schedule Only' : `Filter Behind Schedule (${overdueUnits.length})`}</span>
+              </button>
+
+              {onTriggerOverdueCheck && (
+                <button
+                  type="button"
+                  disabled={isScanningOverdue}
+                  onClick={async () => {
+                    soundManager.playClick();
+                    setIsScanningOverdue(true);
+                    try {
+                      const createdCount = await onTriggerOverdueCheck();
+                      setOverdueScanMessage(
+                        createdCount > 0
+                          ? `Dispatched ${createdCount} new Supervisor overdue alert${createdCount === 1 ? '' : 's'} to Notification Hub.`
+                          : 'Supervisor overdue alerts are already up-to-date in Notification Hub.'
+                      );
+                      setTimeout(() => setOverdueScanMessage(null), 5000);
+                    } finally {
+                      setIsScanningOverdue(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#FF3366]/20 hover:bg-[#FF3366]/35 text-red-100 border border-[#FF3366]/60 text-xs font-mono font-bold transition-colors disabled:opacity-50"
+                >
+                  <BellRing className="w-3.5 h-3.5 text-[#FF3366]" />
+                  <span>{isScanningOverdue ? 'Scanning...' : 'Notify Supervisor'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Highlighted affected unit pills */}
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[#FF3366]/25">
+            <span className="text-[10px] font-mono text-red-200/80 uppercase tracking-wider">Affected Units:</span>
+            {overdueUnits.map((u) => {
+              const tasks = unitOverdueMap.get(u.id) || [];
+              const maxDays = Math.max(...tasks.map((t) => t.daysOverdue), 1);
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => {
+                    soundManager.playClick();
+                    onOpenDashboard(u.id);
+                  }}
+                  className="px-2.5 py-1 rounded bg-slate-950/90 hover:bg-[#FF3366]/20 border border-[#FF3366]/50 text-xs font-mono text-white flex items-center gap-1.5 transition-colors"
+                  title={`Inspect Unit #${u.unit_number} (${tasks.map((t) => `${t.vendorName}: ${t.activity} - ${t.daysOverdue}d late`).join('; ')})`}
+                >
+                  <span className="font-bold text-[#FF3366]">#{u.unit_number}</span>
+                  <span className="text-slate-300 text-[10px]">
+                    ({tasks.length} behind • {maxDays}d late)
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {overdueScanMessage && (
+            <div className="text-[11px] font-mono text-[#00FFB4] bg-slate-950/80 border border-[#00FFB4]/30 px-3 py-1.5 rounded">
+              {overdueScanMessage}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Active Filter Bar */}
-      {(searchQuery || filterFloorPlan !== 'all') && (
+      {(searchQuery || filterFloorPlan !== 'all' || onlyBehindSchedule) && (
         <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs font-mono">
           <div className="flex items-center gap-2 text-slate-300">
             <Search className="w-3.5 h-3.5 text-[#00FFB4]" />
@@ -914,6 +1109,8 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
               Active filter: {searchQuery && <span>Search: <strong className="text-white">"{searchQuery}"</strong></span>}
               {searchQuery && filterFloorPlan !== 'all' && ' • '}
               {filterFloorPlan !== 'all' && <span>Floor plan: <strong className="text-[#00FFB4]">{filterFloorPlan}</strong></span>}
+              {(searchQuery || filterFloorPlan !== 'all') && onlyBehindSchedule && ' • '}
+              {onlyBehindSchedule && <span className="text-[#FF3366] font-bold">Behind Schedule Only</span>}
               <span className="text-slate-400 ml-2 font-normal">
                 ({filteredUnits.length} of {units.length} units match)
               </span>
@@ -925,6 +1122,7 @@ export const UnitPipeline: React.FC<UnitPipelineProps> = ({
               soundManager.playClick();
               setSearchQuery('');
               setFilterFloorPlan('all');
+              setOnlyBehindSchedule(false);
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[#00FFB4] hover:text-white text-xs font-semibold border border-slate-700 transition-colors"
           >

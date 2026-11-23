@@ -23,7 +23,7 @@ import {
   Pencil,
   HardDrive
 } from 'lucide-react';
-import { TechnicianUser, SupervisorNotification, SyncQueueItem, Vendor } from '../types';
+import { TechnicianUser, SupervisorNotification, SyncQueueItem, Vendor, Unit, getOverdueVendorTasksForUnit } from '../types';
 import { offlineDB } from '../services/db';
 import { soundManager } from '../services/audio';
 
@@ -31,6 +31,7 @@ interface HeaderProps {
   currentUser: TechnicianUser;
   technicians: TechnicianUser[];
   vendors?: Vendor[];
+  units?: Unit[];
   onUserChange: (user: TechnicianUser) => void;
   onOpenNotifications: () => void;
   onOpenNewUnit: () => void;
@@ -47,6 +48,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser,
   technicians,
   vendors = [],
+  units = [],
   onUserChange,
   onOpenNotifications,
   onOpenNewUnit,
@@ -75,6 +77,8 @@ export const Header: React.FC<HeaderProps> = ({
   }, []);
 
   const unreadNotifs = notifications.filter(n => !n.read).length;
+  const overdueUnitsCount = units.filter(u => getOverdueVendorTasksForUnit(u).length > 0).length;
+  const hasUnreadOverdue = notifications.some(n => !n.read && n.type === 'vendor_overdue');
 
   const handleToggleDeadZone = () => {
     soundManager.playClick();
@@ -109,12 +113,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-black border border-[#00FFB4] flex items-center justify-center shadow-[0_0_15px_rgba(0,255,180,0.35)]">
-              <span className="font-['Chakra_Petch'] font-bold text-lg text-[#00FFB4]">SM</span>
+              <span className="font-['Chakra_Petch'] font-bold text-lg text-[#00FFB4]">MR</span>
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-['Chakra_Petch'] font-bold text-lg tracking-wider text-white">
-                  SOUTHERLY <span className="text-[#00FFB4]">MAKE READY'S</span>
+                  MAKE <span className="text-[#00FFB4]">READY'S</span>
                 </h1>
                 <span className="hidden sm:inline-block px-1.5 py-0.5 rounded text-[10px] font-mono tracking-widest font-semibold bg-[#00FFB4]/10 text-[#00FFB4] border border-[#00FFB4]/30 uppercase">
                   v2.4 OPS
@@ -147,12 +151,25 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Mobile Right Controls: Bell & Sound */}
+          {/* Mobile Right Controls: Overdue Badge & Bell */}
           <div className="flex items-center gap-2 md:hidden">
+            {overdueUnitsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => { soundManager.playClick(); onOpenNotifications(); }}
+                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#FF3366]/15 border border-[#FF3366]/60 text-[#FF3366] text-[10px] font-mono font-bold animate-pulse"
+                title="Units falling behind scheduled vendor completion date"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{overdueUnitsCount} LATE</span>
+              </button>
+            )}
             <button
               id="header-mobile-notif-btn"
               onClick={() => { soundManager.playClick(); onOpenNotifications(); }}
-              className="relative p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200"
+              className={`relative p-2.5 rounded-lg bg-slate-900 border ${
+                hasUnreadOverdue ? 'border-[#FF3366]/60 text-[#FF3366]' : 'border-slate-700 text-slate-200'
+              }`}
               aria-label="Notifications"
             >
               <Bell className="w-5 h-5" />
@@ -237,11 +254,29 @@ export const Header: React.FC<HeaderProps> = ({
             {soundEnabled ? <Volume2 className="w-4 h-4 text-[#00FFB4]" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
+          {/* Supervisor Overdue Vendors Alert Pill (Desktop) */}
+          {overdueUnitsCount > 0 && (
+            <button
+              id="header-overdue-vendors-btn"
+              type="button"
+              onClick={() => { soundManager.playClick(); onOpenNotifications(); }}
+              title="Supervisor Alert: Units have assigned vendor tasks falling behind their scheduled completion date"
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#FF3366]/15 border border-[#FF3366]/60 text-[#FF3366] hover:bg-[#FF3366]/25 text-[11px] font-mono font-bold shadow-[0_0_12px_rgba(255,51,102,0.22)] animate-pulse cursor-pointer"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>{overdueUnitsCount} UNIT{overdueUnitsCount === 1 ? '' : 'S'} BEHIND</span>
+            </button>
+          )}
+
           {/* Desktop Notifications Bell */}
           <button
             id="header-desktop-notif-btn"
             onClick={() => { soundManager.playClick(); onOpenNotifications(); }}
-            className="hidden md:flex relative p-2 rounded-md bg-slate-900/80 border border-slate-800 text-slate-300 hover:border-slate-700"
+            className={`hidden md:flex relative p-2 rounded-md bg-slate-900/80 border transition-colors ${
+              hasUnreadOverdue
+                ? 'border-[#FF3366]/60 text-[#FF3366] hover:border-[#FF3366]'
+                : 'border-slate-800 text-slate-300 hover:border-slate-700'
+            }`}
             aria-label="Notifications"
           >
             <Bell className="w-4 h-4" />

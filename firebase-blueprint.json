@@ -14,6 +14,8 @@
         "assigned_technician_id": { "type": "string" },
         "assigned_vendor_id": { "type": "string" },
         "assigned_vendor": { "type": "string" },
+        "assigned_vendors": { "type": "array" },
+        "schedule_events": { "type": "array" },
         "move_out_date": { "type": "string" },
         "target_ready_date": { "type": "string" },
         "last_updated": { "type": "number" },
@@ -77,7 +79,7 @@
     },
     "SupervisorNotification": {
       "title": "SupervisorNotification",
-      "description": "Notification dispatched to maintenance supervisors",
+      "description": "Notification dispatched to maintenance supervisors (trade completions, work orders, rent-ready sign-offs, overdue vendor alerts)",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -87,7 +89,9 @@
         "message": { "type": "string" },
         "unit_id": { "type": "string" },
         "unit_number": { "type": "string" },
-        "read": { "type": "boolean" }
+        "trade_category": { "type": "string" },
+        "read": { "type": "boolean" },
+        "email_dispatched": { "type": "boolean" }
       },
       "required": ["id", "timestamp", "type", "title", "message", "unit_id", "unit_number", "read"]
     },

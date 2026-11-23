@@ -10,15 +10,21 @@ import {
   Clock, 
   CheckCheck,
   Send,
-  Trash2
+  Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Truck,
+  ArrowUpRight
 } from 'lucide-react';
-import { SupervisorNotification } from '../types';
+import { SupervisorNotification, Unit, getOverdueVendorTasksForUnit } from '../types';
 import { soundManager } from '../services/audio';
 
 interface NotificationModalProps {
   isOpen: boolean;
   onClose: () => void;
   notifications: SupervisorNotification[];
+  units?: Unit[];
+  onRunOverdueCheck?: () => Promise<number>;
   onMarkRead: (id: string) => void;
   onMarkAllRead: () => void;
   onDeleteNotification?: (id: string) => void;
@@ -30,6 +36,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   isOpen,
   onClose,
   notifications,
+  units = [],
+  onRunOverdueCheck,
   onMarkRead,
   onMarkAllRead,
   onDeleteNotification,
@@ -37,6 +45,8 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   onNavigateToUnit
 }) => {
   const [activeTab, setActiveTab] = useState<'alerts' | 'email-preview'>('alerts');
+  const [isScanningOverdue, setIsScanningOverdue] = useState(false);
+  const [scanResultMsg, setScanResultMsg] = useState<string | null>(null);
   const [selectedNotifForEmail, setSelectedNotifForEmail] = useState<SupervisorNotification | null>(
     notifications[0] || null
   );
@@ -58,8 +68,36 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
   const unreadCount = notifications.filter(n => !n.read).length;
   const readCount = notifications.filter(n => n.read).length;
 
+  const overdueUnitEntries = units
+    .map((u) => ({
+      unit: u,
+      tasks: getOverdueVendorTasksForUnit(u)
+    }))
+    .filter((entry) => entry.tasks.length > 0);
+
+  const handleRunScan = async () => {
+    if (!onRunOverdueCheck || isScanningOverdue) return;
+    soundManager.playClick();
+    setIsScanningOverdue(true);
+    setScanResultMsg(null);
+    try {
+      const created = await onRunOverdueCheck();
+      if (created > 0) {
+        setScanResultMsg(`Triggered ${created} new Supervisor overdue alert${created === 1 ? '' : 's'}.`);
+      } else if (overdueUnitEntries.length > 0) {
+        setScanResultMsg(`${overdueUnitEntries.length} unit${overdueUnitEntries.length === 1 ? '' : 's'} behind schedule already alerted.`);
+      } else {
+        setScanResultMsg('All assigned vendor tasks are currently on schedule.');
+      }
+    } finally {
+      setIsScanningOverdue(false);
+    }
+  };
+
   const getNotifIcon = (type: SupervisorNotification['type']) => {
     switch (type) {
+      case 'vendor_overdue':
+        return { icon: AlertTriangle, color: 'text-[#FF3366] bg-[#FF3366]/15 border-[#FF3366]/50' };
       case 'checklist_100':
         return { icon: CheckCircle2, color: 'text-[#00FFB4] bg-[#00FFB4]/15 border-[#00FFB4]/40' };
       case 'work_order_alert':
@@ -141,6 +179,102 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
           
           {activeTab === 'alerts' ? (
             <div className="space-y-3">
+              {/* Live Overdue Vendor Trigger & Spotlight Section */}
+              <div
+                className={`p-3 rounded-xl border space-y-2.5 ${
+                  overdueUnitEntries.length > 0
+                    ? 'bg-[#FF3366]/10 border-[#FF3366]/50 shadow-[0_0_15px_rgba(255,51,102,0.12)]'
+                    : 'bg-slate-900/70 border-slate-800'
+                }`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle
+                      className={`w-4 h-4 shrink-0 ${
+                        overdueUnitEntries.length > 0 ? 'text-[#FF3366] animate-pulse' : 'text-[#00FFB4]'
+                      }`}
+                    />
+                    <div>
+                      <div className="text-xs font-['Chakra_Petch'] font-bold text-white uppercase tracking-wide">
+                        {overdueUnitEntries.length > 0
+                          ? `Units Falling Behind Schedule (${overdueUnitEntries.length})`
+                          : 'Vendor Schedule Monitor'}
+                      </div>
+                      <div className="text-[10px] font-mono text-slate-400">
+                        {overdueUnitEntries.length > 0
+                          ? 'Assigned vendor tasks have passed their scheduled completion date'
+                          : 'Automatically checks assigned vendor due dates against today'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {onRunOverdueCheck && (
+                    <button
+                      id="btn-scan-overdue-vendors"
+                      type="button"
+                      onClick={handleRunScan}
+                      disabled={isScanningOverdue}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 border border-[#FF3366]/50 hover:border-[#FF3366] text-[#FF3366] text-[11px] font-mono font-bold transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isScanningOverdue ? 'animate-spin' : ''}`} />
+                      <span>{isScanningOverdue ? 'Scanning...' : 'Scan Overdue Vendors'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {scanResultMsg && (
+                  <div className="text-[11px] font-mono text-amber-300 bg-slate-950/90 px-2.5 py-1.5 rounded border border-amber-500/30">
+                    {scanResultMsg}
+                  </div>
+                )}
+
+                {overdueUnitEntries.length > 0 && (
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {overdueUnitEntries.map(({ unit, tasks }) => {
+                      const maxDays = Math.max(...tasks.map((t) => t.daysOverdue));
+                      return (
+                        <div
+                          key={unit.id}
+                          className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-950/90 border border-[#FF3366]/40 text-xs"
+                        >
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-['Chakra_Petch'] font-bold text-white">
+                                Unit #{unit.unit_number}
+                              </span>
+                              <span className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold bg-[#FF3366]/20 text-[#FF3366] border border-[#FF3366]/40">
+                                {tasks.length} OVERDUE • {maxDays}d LATE
+                              </span>
+                              <span className="text-[10px] font-mono text-slate-400 truncate">
+                                {unit.building}
+                              </span>
+                            </div>
+                            <div className="text-[10.5px] font-mono text-amber-300 truncate">
+                              {tasks
+                                .map((t) => `${t.vendorName} (${t.activity} · due ${t.scheduledDate})`)
+                                .join(' | ')}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              soundManager.playClick();
+                              onClose();
+                              onNavigateToUnit(unit.id);
+                            }}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded bg-[#FF3366] hover:brightness-110 text-white font-mono font-bold text-[10px] shrink-0 cursor-pointer"
+                          >
+                            <span>Inspect</span>
+                            <ArrowUpRight className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-between items-center pb-2 flex-wrap gap-2">
                 <span className="text-xs font-mono text-slate-400">Recent Automated Dispatches:</span>
                 <div className="flex items-center gap-2">
@@ -204,10 +338,20 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                             )}
                           </div>
                           <p className="text-xs text-slate-300 leading-relaxed font-sans">{notif.message}</p>
-                          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-500 pt-1">
+                          <div className="flex items-center gap-3 text-[11px] font-mono text-slate-500 pt-1 flex-wrap">
                             <span>{timeAgo}</span>
                             <span>•</span>
-                            <span className="text-[#00E5FF]">Unit #{notif.unit_number}</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                soundManager.playClick();
+                                onClose();
+                                onNavigateToUnit(notif.unit_id);
+                              }}
+                              className="text-[#00E5FF] hover:underline font-semibold cursor-pointer"
+                            >
+                              Unit #{notif.unit_number} →
+                            </button>
                             {notif.email_dispatched && (
                               <>
                                 <span>•</span>
@@ -352,7 +496,9 @@ export const NotificationModal: React.FC<NotificationModalProps> = ({
                     </div>
 
                     <p>
-                      The field technician has signed off on these items in the mobile terminal. Please conduct the final walk-through inspection and sign off in the <em>Readiness Sign-off</em> screen.
+                      {selectedNotifForEmail.type === 'vendor_overdue'
+                        ? 'Action Required: One or more assigned vendor tasks on this unit have fallen behind their scheduled completion date. Please follow up with the assigned contractor(s) and update the schedule in the Unit Dashboard.'
+                        : 'The field technician has signed off on these items in the mobile terminal. Please conduct the final walk-through inspection and sign off in the Readiness Sign-off screen.'}
                     </p>
 
                     <div className="pt-2 flex items-center justify-between gap-3 flex-wrap">

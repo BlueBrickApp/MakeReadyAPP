@@ -19,7 +19,10 @@ import {
   Vendor,
   TradeCategory,
   TRADE_CATEGORIES,
-  TurnoverStage
+  TurnoverStage,
+  sortVendorAssignmentsByDate,
+  getLocalTodayIso,
+  getOverdueVendorTasksForUnit
 } from '../types';
 import { soundManager } from './audio';
 import { 
@@ -1563,7 +1566,7 @@ class OfflineDB {
       assigned_at: Date.now()
     };
 
-    const updatedList = [...existingList, newAssignment];
+    const updatedList = sortVendorAssignmentsByDate([...existingList, newAssignment]);
 
     let scheduleEvents = Array.isArray(unit.schedule_events) ? [...unit.schedule_events] : [];
     if (scheduledDate?.trim()) {
@@ -1618,6 +1621,7 @@ class OfflineDB {
       await this.enqueueSync('field_log', logEntry.id, 'create', logEntry);
     }
 
+    await this.checkAndTriggerOverdueVendorAlerts({ targetUnitId: unit.id }).catch(() => {});
     this.notifyListeners();
     return updatedUnit;
   }
@@ -1756,16 +1760,19 @@ class OfflineDB {
           vendor_id: resolvedVendorId,
           vendor_name: resolvedVendorName,
           trade_category: payload.activity.trim(),
-          task_note: `${payload.date}${payload.notes?.trim() ? ` · ${payload.notes.trim()}` : ''}`,
+          task_note: payload.notes?.trim() || undefined,
+          scheduled_date: payload.date,
           assigned_at: Date.now()
         });
       }
     }
 
+    const sortedVendors = sortVendorAssignmentsByDate(existingVendors);
+
     const updatedUnit: Unit = {
       ...unit,
       schedule_events: updatedEvents,
-      assigned_vendors: existingVendors,
+      assigned_vendors: sortedVendors,
       assigned_vendor_id: resolvedVendorId && resolvedVendorId !== 'IN_HOUSE' ? resolvedVendorId : unit.assigned_vendor_id,
       assigned_vendor: resolvedVendorName && resolvedVendorId !== 'IN_HOUSE' ? resolvedVendorName : unit.assigned_vendor,
       last_updated: Date.now()
@@ -1788,6 +1795,7 @@ class OfflineDB {
     await this.putInStore('field_logs', logEntry);
     this.pushToFirestore('field_logs', logEntry.id, logEntry);
 
+    await this.checkAndTriggerOverdueVendorAlerts({ targetUnitId: unit.id }).catch(() => {});
     this.notifyListeners();
     return updatedUnit;
   }
@@ -2029,18 +2037,20 @@ class OfflineDB {
       ? allVendors.find(v => v.id === unitData.assigned_vendor_id)
       : undefined;
 
-    const initialVendors: UnitVendorAssignment[] = Array.isArray(unitData.assigned_vendors)
-      ? unitData.assigned_vendors
-      : assignedVendorObj
-      ? [
-          {
-            vendor_id: assignedVendorObj.id,
-            vendor_name: assignedVendorObj.name,
-            trade_category: assignedVendorObj.trade_category,
-            assigned_at: Date.now()
-          }
-        ]
-      : [];
+    const initialVendors: UnitVendorAssignment[] = sortVendorAssignmentsByDate(
+      Array.isArray(unitData.assigned_vendors)
+        ? unitData.assigned_vendors
+        : assignedVendorObj
+        ? [
+            {
+              vendor_id: assignedVendorObj.id,
+              vendor_name: assignedVendorObj.name,
+              trade_category: assignedVendorObj.trade_category,
+              assigned_at: Date.now()
+            }
+          ]
+        : []
+    );
 
     const newUnit: Unit = {
       ...unitData,
@@ -2107,8 +2117,122 @@ class OfflineDB {
       await this.enqueueSync('field_log', logEntry.id, 'create', logEntry);
     }
 
+    await this.checkAndTriggerOverdueVendorAlerts({ targetUnitId: newUnit.id }).catch(() => {});
     this.notifyListeners();
     return newUnit;
+  }
+
+  /**
+   * Supervisor Notification Trigger:
+   * Scans active units for assigned vendor tasks or calendar schedule items falling behind
+   * their scheduled completion date, and dispatches a deduplicated SupervisorNotification.
+   */
+  public async checkAndTriggerOverdueVendorAlerts(options?: {
+    forceRescan?: boolean;
+    targetUnitId?: string;
+  }): Promise<SupervisorNotification[]> {
+    const forceRescan = !!options?.forceRescan;
+    const targetUnitId = options?.targetUnitId;
+    const todayIso = getLocalTodayIso();
+
+    const units = await this.getUnits();
+    const existingNotifs = await this.getNotifications();
+
+    const STORAGE_KEY = 'utt_overdue_vendor_trigger_v1';
+    let triggerMap: Record<string, string> = {};
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        triggerMap = JSON.parse(raw) || {};
+      }
+    } catch {
+      triggerMap = {};
+    }
+
+    const createdNotifs: SupervisorNotification[] = [];
+
+    for (const unit of units) {
+      if (targetUnitId && unit.id !== targetUnitId) continue;
+
+      const overdue = getOverdueVendorTasksForUnit(unit, todayIso);
+      if (overdue.length === 0) {
+        if (triggerMap[unit.id]) {
+          delete triggerMap[unit.id];
+        }
+        continue;
+      }
+
+      const signature = `${todayIso}|${overdue
+        .map((o) => `${o.id}:${o.scheduledDate}:${o.status}`)
+        .join('|')}`;
+
+      if (!forceRescan && triggerMap[unit.id] === signature) {
+        continue;
+      }
+
+      const maxDays = Math.max(...overdue.map((o) => o.daysOverdue));
+      const summaryParts = overdue
+        .slice(0, 3)
+        .map(
+          (o) =>
+            `${o.vendorName} (${o.activity} — due ${o.scheduledDate}, ${o.daysOverdue}d behind)`
+        );
+      const extraCount = overdue.length > 3 ? ` +${overdue.length - 3} more` : '';
+      const message = `Unit #${unit.unit_number} (${unit.building}) has ${
+        overdue.length
+      } assigned vendor task${
+        overdue.length === 1 ? '' : 's'
+      } falling behind scheduled completion: ${summaryParts.join('; ')}${extraCount}.`;
+
+      // Prevent duplicate unread notification with the exact same message when force-rescanning
+      const hasIdenticalUnread = existingNotifs.some(
+        (n) =>
+          !n.read &&
+          n.type === 'vendor_overdue' &&
+          n.unit_id === unit.id &&
+          n.message === message
+      );
+      if (hasIdenticalUnread) {
+        triggerMap[unit.id] = signature;
+        continue;
+      }
+
+      const notif: SupervisorNotification = {
+        id: `notif-overdue-${unit.id}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 6)}`,
+        timestamp: Date.now(),
+        type: 'vendor_overdue',
+        title: `Overdue Vendor Alert: Unit #${unit.unit_number} (${overdue.length} Behind · ${maxDays}d Late)`,
+        message,
+        unit_id: unit.id,
+        unit_number: unit.unit_number,
+        read: false,
+        email_dispatched: true
+      };
+
+      await this.putInStore('notifications', notif);
+      this.pushToFirestore('notifications', notif.id, notif);
+      if (!this.isConnected) {
+        await this.enqueueSync('notifications', notif.id, 'create', notif);
+      }
+
+      createdNotifs.push(notif);
+      triggerMap[unit.id] = signature;
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(triggerMap));
+    } catch {
+      // Ignore storage quota errors
+    }
+
+    if (createdNotifs.length > 0) {
+      soundManager.playAlert();
+      this.notifyListeners();
+    }
+
+    return createdNotifs;
   }
 
   // Mark notification read

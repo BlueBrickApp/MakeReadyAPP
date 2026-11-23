@@ -3,7 +3,7 @@
  * High-Contrast Field Operations Management (Neon Rush)
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from './components/Header';
 import { Navigation, ScreenTab } from './components/Navigation';
 import { UnitPipeline } from './components/UnitPipeline';
@@ -133,6 +133,8 @@ export default function App() {
     }
   };
 
+  const hasCheckedOverdueOnBoot = useRef(false);
+
   useEffect(() => {
     let isMounted = true;
 
@@ -144,9 +146,20 @@ export default function App() {
     offlineDB.init()
       .then(() => {
         if (isMounted) {
-          loadData().finally(() => {
-            if (isMounted) setIsLoading(false);
-          });
+          loadData()
+            .then(async () => {
+              if (isMounted && !hasCheckedOverdueOnBoot.current) {
+                hasCheckedOverdueOnBoot.current = true;
+                try {
+                  await offlineDB.checkAndTriggerOverdueVendorAlerts();
+                } catch (err) {
+                  console.warn('Overdue vendor alert check note:', err);
+                }
+              }
+            })
+            .finally(() => {
+              if (isMounted) setIsLoading(false);
+            });
         }
       })
       .catch((err) => {
@@ -164,6 +177,13 @@ export default function App() {
       unsub();
     };
   }, []);
+
+  // Handler: Manually or explicitly trigger Supervisor overdue vendor scan
+  const handleRunOverdueVendorCheck = async (): Promise<number> => {
+    const created = await offlineDB.checkAndTriggerOverdueVendorAlerts({ forceRescan: true });
+    await loadData();
+    return created.length;
+  };
 
   // Handler: Move Unit stage (Kanban)
   const handleMoveUnitStage = async (unitId: string, newStage: TurnoverStage) => {
@@ -379,6 +399,7 @@ export default function App() {
         onOpenManageVendors={() => setIsManageVendorsModalOpen(true)}
         onOpenExportCode={() => setIsExportCodeModalOpen(true)}
         notifications={notifications}
+        units={units}
         syncQueue={syncQueue}
         onSyncCompleted={loadData}
       />
@@ -425,6 +446,7 @@ export default function App() {
                 onMoveStage={handleMoveUnitStage}
                 onDeleteUnit={handleDeleteUnit}
                 onOpenNewUnit={() => setIsNewUnitModalOpen(true)}
+                onTriggerOverdueCheck={handleRunOverdueVendorCheck}
               />
             )}
 
@@ -515,6 +537,8 @@ export default function App() {
         isOpen={isNotificationModalOpen}
         onClose={() => setIsNotificationModalOpen(false)}
         notifications={notifications}
+        units={units}
+        onRunOverdueCheck={handleRunOverdueVendorCheck}
         onMarkRead={async (id) => {
           await offlineDB.markNotificationRead(id);
           await loadData();
@@ -591,7 +615,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#00FFB4] shadow-[0_0_6px_#00FFB4]" />
-            <span>SOUTHERLY MAKE READY'S • LOCAL DB ENCRYPTION READY</span>
+            <span>MAKE READY'S • LOCAL DB ENCRYPTION READY</span>
           </div>
           <div className="flex items-center gap-4 text-slate-400 flex-wrap justify-center">
             <span className="text-[#00FFB4] font-semibold">Maintenance Supervisor: Gerry Malovini</span>

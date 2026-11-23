@@ -16,7 +16,9 @@ import {
   TrendingUp,
   Activity,
   Truck,
-  Plus
+  Plus,
+  Calendar,
+  AlertTriangle
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -37,7 +39,11 @@ import {
   TRADE_CATEGORIES,
   TRADE_DEEP_DIVE_LABELS,
   TechnicianUser,
-  Vendor
+  Vendor,
+  sortVendorAssignmentsByDate,
+  extractVendorAssignmentDate,
+  getOverdueVendorTasksForUnit,
+  getLocalTodayIso
 } from '../types';
 import { soundManager } from '../services/audio';
 import { UnitMakeReadyCalendar } from './UnitMakeReadyCalendar';
@@ -53,7 +59,7 @@ interface TurnoverDashboardProps {
   technicians?: TechnicianUser[];
   vendors?: Vendor[];
   onReassignTechnician?: (unitId: string, technicianId: string) => Promise<void>;
-  onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string) => Promise<void>;
+  onAssignVendorToUnit?: (unitId: string, vendorId: string, taskNote: string, scheduledDate?: string) => Promise<void>;
   onRemoveVendorFromUnit?: (unitId: string, vendorId: string, assignedAt?: number) => Promise<void>;
   onAddScheduleEvent?: (
     unitId: string,
@@ -297,6 +303,9 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
   const [selectedVendorId, setSelectedVendorId] = useState('');
   const [customVendorName, setCustomVendorName] = useState('');
   const [vendorTaskNote, setVendorTaskNote] = useState('');
+  const [vendorScheduledDate, setVendorScheduledDate] = useState(
+    new Date().toISOString().split('T')[0]
+  );
 
   const currentUnit = units.find(u => u.id === selectedUnitId) || units[0];
 
@@ -340,12 +349,48 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
   const totalPhotosUploaded = unitChecklists.reduce((sum, c) => sum + (c.task_list || []).filter(t => !!t.photo_url).length, 0);
 
   const openWorkOrders = unitWorkOrders.filter(w => w.status !== 'Resolved');
+  const todayIso = getLocalTodayIso();
+  const overdueTasks = getOverdueVendorTasksForUnit(currentUnit, todayIso);
+  const hasOverdueVendors = overdueTasks.length > 0;
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       
       {/* Unit Selector & Make-Ready Overview Banner */}
-      <div className="bg-[#0D131F] border border-slate-800 rounded-xl p-4 sm:p-6 shadow-xl space-y-6">
+      <div className={`bg-[#0D131F] rounded-xl p-4 sm:p-6 shadow-xl space-y-6 border ${
+        hasOverdueVendors
+          ? 'border-[#FF3366]/70 shadow-[0_0_25px_rgba(255,51,102,0.14)]'
+          : 'border-slate-800'
+      }`}>
+        {hasOverdueVendors && (
+          <div className="bg-[#FF3366]/15 border border-[#FF3366]/60 rounded-lg p-3.5 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[#FF3366] font-['Chakra_Petch'] font-bold text-sm tracking-wide">
+                <AlertTriangle className="w-4 h-4 shrink-0 animate-pulse" />
+                <span>SUPERVISOR ALERT: ASSIGNED VENDOR TASKS FALLING BEHIND SCHEDULE</span>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-[#FF3366]/25 border border-[#FF3366]/50 text-[#FF3366] font-mono text-[10px] font-bold">
+                {overdueTasks.length} OVERDUE TASK{overdueTasks.length === 1 ? '' : 'S'}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
+              {overdueTasks.map((ot) => (
+                <div
+                  key={ot.id}
+                  className="flex items-center justify-between gap-2 bg-slate-950/90 border border-[#FF3366]/40 rounded px-2.5 py-1.5 text-[11px] font-mono"
+                >
+                  <span className="text-red-100 truncate">
+                    <strong>{ot.vendorName}</strong> · {ot.activity}
+                  </span>
+                  <span className="text-[#FF3366] font-bold shrink-0">
+                    Due {ot.scheduledDate} ({ot.daysOverdue}d late)
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           
           {/* Unit Selector dropdown & basic details */}
@@ -374,7 +419,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                 <ChevronDown className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-[#00FFB4] pointer-events-none" />
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-mono text-slate-300">
+              <div className="flex items-center gap-2 flex-wrap text-xs font-mono text-slate-300">
                 <span>{currentUnit?.floor_plan}</span>
                 <span aria-hidden="true" className="text-slate-600">·</span>
                 <span className={
@@ -386,6 +431,12 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                 }>
                   {currentUnit?.current_status}
                 </span>
+                {hasOverdueVendors && (
+                  <span className="px-2 py-0.5 rounded bg-[#FF3366]/20 text-[#FF3366] border border-[#FF3366]/50 text-[10px] font-bold flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    <span>BEHIND SCHEDULE</span>
+                  </span>
+                )}
               </div>
             </div>
             
@@ -437,7 +488,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
 
               {/* Assigned Vendors for this Unit */}
               {(() => {
-                const unitVendors: UnitVendorAssignment[] =
+                const rawUnitVendors: UnitVendorAssignment[] =
                   Array.isArray(currentUnit.assigned_vendors) && currentUnit.assigned_vendors.length > 0
                     ? currentUnit.assigned_vendors
                     : currentUnit.assigned_vendor
@@ -450,6 +501,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                         }
                       ]
                     : [];
+                const unitVendors = sortVendorAssignmentsByDate(rawUnitVendors);
 
                 return (
                   <div className="p-2.5 rounded-lg bg-slate-900/90 border border-slate-800 space-y-2">
@@ -480,35 +532,62 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                       </div>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
-                        {unitVendors.map((uv, idx) => (
-                          <div
-                            key={`${uv.vendor_id}-${uv.assigned_at || idx}`}
-                            className="flex items-center gap-2 bg-slate-950 border border-slate-700/80 px-2.5 py-1 rounded-md text-[11px]"
-                          >
-                            <span className="text-white font-semibold">{uv.vendor_name}</span>
-                            <span className="text-slate-500">·</span>
-                            <span className="text-amber-300">{uv.trade_category}</span>
-                            {uv.task_note && (
-                              <>
-                                <span className="text-slate-500">·</span>
-                                <span className="text-cyan-300">{uv.task_note}</span>
-                              </>
-                            )}
-                            {onRemoveVendorFromUnit && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  soundManager.playClick();
-                                  onRemoveVendorFromUnit(currentUnit.id, uv.vendor_id, uv.assigned_at);
-                                }}
-                                title="Remove vendor from unit"
-                                className="text-slate-500 hover:text-[#FF3366] ml-1"
-                              >
-                                ✕
-                              </button>
-                            )}
-                          </div>
-                        ))}
+                        {unitVendors.map((uv, idx) => {
+                          const displayDate = extractVendorAssignmentDate(uv);
+                          const isVendorBehind = Boolean(
+                            displayDate &&
+                            displayDate < todayIso &&
+                            overdueTasks.some(
+                              (ot) =>
+                                ot.scheduledDate === displayDate &&
+                                ot.vendorName.toLowerCase() === (uv.vendor_name || '').toLowerCase()
+                            )
+                          );
+                          return (
+                            <div
+                              key={`${uv.vendor_id}-${uv.assigned_at || idx}`}
+                              className={`flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-md text-[11px] border ${
+                                isVendorBehind
+                                  ? 'border-[#FF3366]/60 bg-[#FF3366]/10'
+                                  : 'border-slate-700/80'
+                              }`}
+                            >
+                              {displayDate && (
+                                <span
+                                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                                    isVendorBehind
+                                      ? 'text-[#FF3366] bg-[#FF3366]/15 border-[#FF3366]/50 font-bold'
+                                      : 'text-[#00FFB4] bg-[#00FFB4]/10 border-[#00FFB4]/30'
+                                  }`}
+                                >
+                                  {isVendorBehind ? `⚠ ${displayDate} LATE` : `📅 ${displayDate}`}
+                                </span>
+                              )}
+                              <span className="text-white font-semibold">{uv.vendor_name}</span>
+                              <span className="text-slate-500">·</span>
+                              <span className="text-amber-300">{uv.trade_category}</span>
+                              {uv.task_note && (
+                                <>
+                                  <span className="text-slate-500">·</span>
+                                  <span className="text-cyan-300">{uv.task_note}</span>
+                                </>
+                              )}
+                              {onRemoveVendorFromUnit && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    soundManager.playClick();
+                                    onRemoveVendorFromUnit(currentUnit.id, uv.vendor_id, uv.assigned_at);
+                                  }}
+                                  title="Remove vendor from unit"
+                                  className="text-slate-500 hover:text-[#FF3366] ml-1"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
 
@@ -537,6 +616,17 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                           />
                         )}
 
+                        <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded px-2 py-1">
+                          <Calendar className="w-3.5 h-3.5 text-[#00FFB4] shrink-0" />
+                          <input
+                            type="date"
+                            value={vendorScheduledDate}
+                            onChange={(e) => setVendorScheduledDate(e.target.value)}
+                            className="bg-transparent text-[#00FFB4] text-xs font-mono focus:outline-none"
+                            title="Scheduled Work Date"
+                          />
+                        </div>
+
                         <input
                           type="text"
                           value={vendorTaskNote}
@@ -559,7 +649,7 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                                 : selectedVendorId;
                             if (!targetVendor) return;
                             soundManager.playClick();
-                            await onAssignVendorToUnit(currentUnit.id, targetVendor, vendorTaskNote);
+                            await onAssignVendorToUnit(currentUnit.id, targetVendor, vendorTaskNote, vendorScheduledDate);
                             setCustomVendorName('');
                             setVendorTaskNote('');
                             setShowAddVendorForm(false);
@@ -758,6 +848,8 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
           {units.map((unit) => {
             const vel = allUnitsVelocity.get(unit.id)!;
             const isSelected = unit.id === currentUnit.id;
+            const uOverdue = getOverdueVendorTasksForUnit(unit, todayIso);
+            const isBehind = uOverdue.length > 0;
             const gradId = `unit-spark-grad-${unit.id.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
             return (
@@ -778,17 +870,28 @@ export const TurnoverDashboard: React.FC<TurnoverDashboardProps> = ({
                 }}
                 className={`p-3.5 rounded-lg border transition-all cursor-pointer flex flex-col justify-between space-y-2.5 ${
                   isSelected
-                    ? 'bg-slate-900 border-[#00FFB4] shadow-[0_0_15px_rgba(0,255,180,0.12)]'
+                    ? isBehind
+                      ? 'bg-slate-900 border-[#FF3366] shadow-[0_0_15px_rgba(255,51,102,0.18)]'
+                      : 'bg-slate-900 border-[#00FFB4] shadow-[0_0_15px_rgba(0,255,180,0.12)]'
+                    : isBehind
+                    ? 'bg-[#FF3366]/[0.05] border-[#FF3366]/60 hover:border-[#FF3366] hover:bg-[#FF3366]/[0.08]'
                     : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
                 }`}
               >
                 {/* Unit Header */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-['Chakra_Petch'] font-bold text-base text-white tabular-nums">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`font-['Chakra_Petch'] font-bold text-base tabular-nums ${
+                        isBehind ? 'text-[#FF3366]' : 'text-white'
+                      }`}>
                         #{unit.unit_number}
                       </span>
+                      {isBehind && (
+                        <span className="px-1.5 py-0.2 rounded bg-[#FF3366]/20 text-[#FF3366] border border-[#FF3366]/50 text-[9px] font-mono font-bold">
+                          {uOverdue.length} LATE
+                        </span>
+                      )}
                       <span className="text-slate-600">·</span>
                       <span className="text-[11px] font-mono text-slate-400 truncate">
                         {unit.floor_plan}

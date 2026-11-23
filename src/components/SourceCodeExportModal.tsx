@@ -18,8 +18,8 @@ import JSZip from 'jszip';
 import { offlineDB } from '../services/db';
 import { soundManager } from '../services/audio';
 
-const PASSWORD_STORAGE_KEY = 'southerly_save_code_access_pwd_v1';
-const DEFAULT_PASSWORDS = ['Gerry2026', 'gerry2026', 'southerly2026', 'Southerly2026'];
+const PASSWORD_STORAGE_KEY = 'make_ready_save_code_access_pwd_v1';
+const DEFAULT_PASSWORDS = ['Gerry2026', 'gerry2026', 'MakeReady2026', 'makeready2026'];
 
 // Load all raw project source files via Vite's build-time raw glob
 const srcFilesGlob = (import.meta as any).glob('/src/**/*.{ts,tsx,css}', {
@@ -167,7 +167,7 @@ export const SourceCodeExportModal: React.FC<SourceCodeExportModalProps> = ({ is
     a.href = url;
     a.download =
       selectedFile === 'ALL_FILES'
-        ? `southerly-make-readys-full-code-${new Date().toISOString().slice(0, 10)}.txt`
+        ? `make-readys-full-code-${new Date().toISOString().slice(0, 10)}.txt`
         : selectedFile.replace(/\//g, '_');
     document.body.appendChild(a);
     a.click();
@@ -215,7 +215,7 @@ export const SourceCodeExportModal: React.FC<SourceCodeExportModalProps> = ({ is
       const url = URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `southerly-make-readys-complete-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.download = `make-readys-complete-${new Date().toISOString().slice(0, 10)}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -260,7 +260,7 @@ export const SourceCodeExportModal: React.FC<SourceCodeExportModalProps> = ({ is
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `southerly-make-readys-db-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `make-readys-db-backup-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

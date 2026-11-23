@@ -30,7 +30,8 @@ import {
   UnitScheduleEvent, 
   ScheduleEventStatus, 
   ScheduleTradeCode,
-  parseUnitFloorPlanDetails
+  parseUnitFloorPlanDetails,
+  sortVendorAssignmentsByDate
 } from '../types';
 import { ACTIVE_TECHNICIANS, ACTIVE_VENDORS } from '../services/db';
 import { soundManager } from '../services/audio';
@@ -192,7 +193,9 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
       taskNote: draftTaskNote.trim()
     };
 
-    setIntakeVendors(prev => [...prev, newEntry]);
+    setIntakeVendors(prev =>
+      [...prev, newEntry].sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate))
+    );
     soundManager.playSyncSuccess();
 
     // Reset draft fields for another vendor
@@ -299,15 +302,17 @@ export const NewUnitModal: React.FC<NewUnitModalProps> = ({
         }
       }
 
-      // Convert to UnitVendorAssignment list
-      const mappedVendors: UnitVendorAssignment[] = combinedVendors.map(v => ({
-        vendor_id: v.vendorId,
-        vendor_name: v.vendorName,
-        trade_category: v.tradeCategory,
-        task_note: v.taskNote.trim() || undefined,
-        scheduled_date: v.scheduledDate || undefined,
-        assigned_at: Date.now()
-      }));
+      // Convert to UnitVendorAssignment list sorted by scheduled date
+      const mappedVendors: UnitVendorAssignment[] = sortVendorAssignmentsByDate(
+        combinedVendors.map(v => ({
+          vendor_id: v.vendorId,
+          vendor_name: v.vendorName,
+          trade_category: v.tradeCategory,
+          task_note: v.taskNote.trim() || undefined,
+          scheduled_date: v.scheduledDate || undefined,
+          assigned_at: Date.now()
+        }))
+      );
 
       // Generate initial calendar schedule events from vendor assignments with scheduled dates
       const initialScheduleEvents: UnitScheduleEvent[] = combinedVendors

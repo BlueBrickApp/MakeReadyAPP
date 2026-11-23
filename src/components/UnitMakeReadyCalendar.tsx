@@ -1031,22 +1031,29 @@ export const UnitMakeReadyCalendar: React.FC<UnitMakeReadyCalendarProps> = ({
             <div className="space-y-1 pt-1 border-t border-slate-800/80 max-h-40 overflow-y-auto pr-0.5">
               {scheduleEvents.map((ev) => {
                 const badge = formatDateBadge(ev.date, todayIso, tomorrowIso);
+                const isOverdue = ev.status !== 'Completed' && !!todayIso && ev.date < todayIso;
                 return (
                   <div
                     key={ev.id}
-                    className="flex items-center justify-between gap-1.5 bg-slate-900/90 px-2 py-1 rounded border border-slate-800 text-[9px] font-mono"
+                    className={`flex items-center justify-between gap-1.5 px-2 py-1 rounded border text-[9px] font-mono ${
+                      isOverdue
+                        ? 'bg-[#FF3366]/10 border-[#FF3366]/50'
+                        : 'bg-slate-900/90 border-slate-800'
+                    }`}
                   >
                     <div className="flex items-center gap-1 min-w-0 flex-1 flex-wrap">
                       <span
                         className={`px-1 py-0.2 rounded text-[8px] font-bold shrink-0 ${
-                          badge.isToday
+                          isOverdue
+                            ? 'bg-[#FF3366]/20 text-[#FF3366] border border-[#FF3366]/50'
+                            : badge.isToday
                             ? 'bg-[#00FFB4]/20 text-[#00FFB4] border border-[#00FFB4]/40'
                             : badge.isTomorrow
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                             : 'bg-slate-800 text-slate-300 border border-slate-700'
                         }`}
                       >
-                        {badge.label}
+                        {isOverdue ? `OVERDUE (${badge.label})` : badge.label}
                       </span>
 
                       {Array.isArray(ev.trade_codes) &&

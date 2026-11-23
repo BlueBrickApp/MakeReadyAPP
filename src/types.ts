@@ -192,6 +192,44 @@ export interface UnitVendorAssignment {
   assigned_at: number;
 }
 
+/**
+ * Extracts a YYYY-MM-DD date from scheduled_date or legacy task_note if present.
+ */
+export function extractVendorAssignmentDate(uv: UnitVendorAssignment): string {
+  if (uv.scheduled_date && /^\d{4}-\d{2}-\d{2}$/.test(uv.scheduled_date.trim())) {
+    return uv.scheduled_date.trim();
+  }
+  if (uv.task_note) {
+    const match = uv.task_note.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+    if (match) return match[1];
+  }
+  return '';
+}
+
+/**
+ * Sorts assigned vendors chronologically by scheduled work date (earliest first),
+ * placing undated entries afterward ordered by assigned_at.
+ */
+export function sortVendorAssignmentsByDate(
+  vendors: UnitVendorAssignment[]
+): UnitVendorAssignment[] {
+  return [...vendors].sort((a, b) => {
+    const dateA = extractVendorAssignmentDate(a);
+    const dateB = extractVendorAssignmentDate(b);
+
+    if (dateA && dateB) {
+      const cmp = dateA.localeCompare(dateB);
+      if (cmp !== 0) return cmp;
+    } else if (dateA && !dateB) {
+      return -1;
+    } else if (!dateA && dateB) {
+      return 1;
+    }
+
+    return (a.assigned_at || 0) - (b.assigned_at || 0);
+  });
+}
+
 export type ScheduleEventStatus = 'In Progress' | 'Scheduled' | 'Completed';
 
 // Schedule Trade Codes: PL replaced with PC (Punch) per user request
@@ -398,10 +436,114 @@ export interface FieldLogEntry {
   synced: boolean;
 }
 
+export interface OverdueVendorTask {
+  id: string;
+  source: 'schedule' | 'assignment';
+  vendorName: string;
+  activity: string;
+  scheduledDate: string; // YYYY-MM-DD
+  daysOverdue: number;
+  status: string;
+}
+
+export function getLocalTodayIso(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function diffIsoDays(earlierIso: string, laterIso: string): number {
+  const [y1, m1, d1] = earlierIso.split('-').map(Number);
+  const [y2, m2, d2] = laterIso.split('-').map(Number);
+  if (!y1 || !m1 || !d1 || !y2 || !m2 || !d2) return 0;
+  const ms1 = Date.UTC(y1, m1 - 1, d1);
+  const ms2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.round((ms2 - ms1) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Evaluates a Unit and returns any assigned vendor tasks or make-ready schedule events
+ * that have fallen behind their scheduled completion date (scheduledDate < today and not Completed).
+ */
+export function getOverdueVendorTasksForUnit(
+  unit: Unit | null | undefined,
+  todayIso?: string
+): OverdueVendorTask[] {
+  if (!unit || unit.current_status === 'Rent Ready') return [];
+
+  const today = todayIso || getLocalTodayIso();
+  const overdue: OverdueVendorTask[] = [];
+  const scheduleEvents = Array.isArray(unit.schedule_events) ? unit.schedule_events : [];
+
+  // 1. Check calendar schedule events not marked Completed before today
+  for (const ev of scheduleEvents) {
+    if (!ev || ev.status === 'Completed') continue;
+    const dateStr = (ev.date || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr) && dateStr < today) {
+      const days = diffIsoDays(dateStr, today);
+      if (days >= 1) {
+        overdue.push({
+          id: ev.id,
+          source: 'schedule',
+          vendorName: ev.vendor_name || 'Assigned Vendor / Tech',
+          activity: ev.activity,
+          scheduledDate: dateStr,
+          daysOverdue: days,
+          status: ev.status
+        });
+      }
+    }
+  }
+
+  // 2. Check direct assigned vendors whose scheduled_date is past due (if unit is not yet Ready)
+  if (unit.current_status !== 'Ready' && Array.isArray(unit.assigned_vendors)) {
+    for (const uv of unit.assigned_vendors) {
+      const schedDate = extractVendorAssignmentDate(uv);
+      if (!schedDate || schedDate >= today) continue;
+
+      // Avoid duplicating if already represented by a schedule event on the same date & vendor
+      const matchingEvent = scheduleEvents.find(
+        (ev) =>
+          ev.date === schedDate &&
+          ((uv.vendor_id && ev.vendor_id === uv.vendor_id) ||
+            (uv.vendor_name &&
+              ev.vendor_name &&
+              ev.vendor_name.toLowerCase() === uv.vendor_name.toLowerCase()))
+      );
+      if (matchingEvent) {
+        continue; // Either already marked Completed (not overdue) or captured in step 1
+      }
+
+      const days = diffIsoDays(schedDate, today);
+      if (days >= 1) {
+        overdue.push({
+          id: `${uv.vendor_id}-${schedDate}-${uv.assigned_at || 0}`,
+          source: 'assignment',
+          vendorName: uv.vendor_name,
+          activity: uv.task_note || uv.trade_category || 'Vendor Work',
+          scheduledDate: schedDate,
+          daysOverdue: days,
+          status: 'Pending'
+        });
+      }
+    }
+  }
+
+  return overdue.sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+}
+
 export interface SupervisorNotification {
   id: string;
   timestamp: number;
-  type: 'checklist_100' | 'work_order_alert' | 'rent_ready' | 'conflict_resolved' | 'stage_advanced';
+  type:
+    | 'checklist_100'
+    | 'work_order_alert'
+    | 'rent_ready'
+    | 'conflict_resolved'
+    | 'stage_advanced'
+    | 'vendor_overdue';
   title: string;
   message: string;
   unit_id: string;
